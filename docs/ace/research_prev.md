@@ -1,0 +1,67 @@
+# Research: Project Agila build (Days 1 to 15)
+
+- Version: v2 (2026-10-15, merged `docs/research-log.md`). Backup: `research_prev.md` (v1).
+- Phase rule: nothing in plan_latest.md may rely on an item in section 3 until it has been tested and moved to section 2.
+
+## 1. Context and definitions
+- **Goal:** personal knowledge assistant: save links, text, Markdown and text PDFs; ask a question; get a short cited answer from only the saved material, or a refusal. All local, $0.
+- **Machine:** Windows laptop, Ryzen 5 5600H, 20 GB RAM, CPU only (stated by Eo earlier). Docker Desktop (WSL2), Ollama native on the host.
+- **Time:** at most 15 days, Oct 15 to Oct 29, 4.5 h/day; Day 1 is PRD/planning; build Days 2 to 15 (63 h; committed 54.0 h).
+- **Existing code to reuse (DRY):** `C:\Users\Meo Angelo Alcantara\loop-lab` (reference only, never edit): `rag.py` (heading chunker `chunk_md`, retrieval), `loop.py`, `memory_store.py`, `rag_questions.jsonl`, `evals/`. File list is from an earlier session; read the files before reusing anything (plan step 3.1).
+- **Constraints:** Python 3.10+ (fastembed and trafilatura, from earlier PyPI checks); secrets only in `.env`; API bound to 127.0.0.1; private items never reach Discord.
+
+## 2. Verified facts (official pages, fetched 2026-10-15)
+| ID | Fact | Source | Confidence |
+| --- | --- | --- | --- |
+| V1 | Ollama `qwen3.5` tags: `4b` 3.3 to 4.0 GB, `9b` 6.6 to 7.6 GB, `latest` same size as 9b; all list a 256K context window and text+image input; the page lists "thinking" but does not say how to control it | https://ollama.com/library/qwen3.5 | High |
+| V2 | Thinking is controlled by the `think` field on the chat/generate API (`true`, `false`, `null`=model default, or a named level); `/api/show` returns a `thinking` object with `values` and `default`; the page does not mention Qwen3.5 specifically | https://docs.ollama.com/capabilities/thinking | High for the API, unknown for Qwen3.5 |
+| V3 | Ollama keeps a model loaded 5 minutes by default; `keep_alive` per request (`-1` = forever, `0` = unload) or `OLLAMA_KEEP_ALIVE`; default context 4096, set with `options.num_ctx` or `OLLAMA_CONTEXT_LENGTH`; binds to `127.0.0.1:11434` unless `OLLAMA_HOST` is set | https://docs.ollama.com/faq | High (defaults can change by version: set explicitly) |
+| V4 | Docker Desktop: containers reach the host via the DNS name `host.docker.internal`. The page does not say whether host services bound to `127.0.0.1` are reachable | https://docs.docker.com/desktop/features/networking/networking-how-tos/ | High for the name; loopback reachability UNVERIFIED (see U3) |
+| V5 | Discord: first response to an interaction within 3 seconds or the token is invalidated; type 5 (`DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE`) shows a loading state; interaction tokens are valid 15 minutes for follow-ups | https://docs.discord.com/developers/interactions/receiving-and-responding | High |
+| V6 | Discord message `content` is limited to 2000 characters | https://docs.discord.com/developers/resources/message | High |
+| V7 | pgvector: image `pgvector/pgvector` with tags like `pg18`, `pg17`, `pg18-trixie`, `0.8.7-pg18`; `CREATE EXTENSION vector;` once per database; cosine distance operator `<=>` (similarity = 1 minus distance); exact search by default and no index needed for small tables; page references v0.8.7 | https://github.com/pgvector/pgvector | High |
+| V8 | n8n: image `n8nio/n8n`, pin a tag (example `1.81.0` is only an example, not a recommendation); volume `n8n_data` at `/home/node/.n8n`; port 5678; set `TZ` and `GENERIC_TIMEZONE`. The docker-run page is marked outdated. The current Compose guide adds sandbox (privileged Docker-in-Docker) and SearXNG services for n8n's assistant features, recommends at least 4 GB RAM and 2 vCPUs, and on Windows says to run inside WSL with the project in the WSL filesystem | https://docs.n8n.io/hosting/installation/docker/ and https://docs.n8n.io/deploy/host-n8n/install-options/install-using-docker-compose.md | High for what the pages say; whether a minimal n8n-only setup is fine is UNVERIFIED (U4) |
+| V9 | The HumanLayer ACE page: Research, Plan, Implement; "frequent intentional compaction"; keep context in the 40 to 60 percent range; review research and plans (more leverage than reviewing code) | https://github.com/humanlayer/advanced-context-engineering-for-coding-agents/blob/main/ace-fca.md | High |
+| V10 | `daveshap/ACE_Framework` is the "Autonomous Cognitive Entities" six-layer architecture, not a coding workflow | https://github.com/daveshap/ACE_Framework/blob/main/ACE_Framework.md | High |
+
+## 2b. Facts from earlier in this project (checked 2026-10-15, not re-fetched in this pass; re-check on install day)
+- Package versions seen on PyPI: `discord.py` 2.7.1, `trafilatura` 2.3.1, `fastembed` 0.9.0 (default model BAAI/bge-small-en-v1.5, 384 dimensions), `pypdf` 6.20.1 (BSD-3). PyMuPDF is AGPL-3.0 (avoid).
+- n8n Community edition (Sustainable Use License): free for personal, learning and internal use; no explicit statement about portfolio display; decision D9: no email, exports stay unpublished.
+- n8n has a Discord node for sending; no native trigger for incoming Discord messages, so the bot calls an n8n Webhook node.
+- `youtube-transcript-api` (video captions) is backlog, not in the core plan.
+Confidence: medium. Rule: pin what you actually install; write the version in `docs/setup-log.md`.
+
+## 2c. Facts merged from `docs/research-log.md` (review chat, 2026-10-15; "Read" = seen on the page that day)
+- Qwen3.5 thinking: the Modelfile cannot turn it off (Ollama issue 14617, user report on 0.17.4); API `think:false` works per request. A third-party guide says thinking is off by default for 0.8B to 9B in llama.cpp; NOT confirmed for Ollama, so U2 stays open. Source: https://github.com/ollama/ollama/issues/14617 ; https://unsloth.ai/docs/models/qwen3.5
+- Postgres 18 images keep data under `/var/lib/postgresql`; 17 and below use `/var/lib/postgresql/data`. Choose the volume path to match the tag. Source: https://hub.docker.com/_/postgres
+- pgvector Docker tags include `0.8.7-pg17`, `0.8.7-pg18`, `pg17`, `pg18`. Source: https://hub.docker.com/r/pgvector/pgvector/tags
+- n8n latest stable 2.42.7 (2026-10-12); 2.x is current. Source: https://github.com/n8n-io/n8n/releases
+- PyPI JSON API versions on 2026-10-15: fastembed 0.9.0, trafilatura 2.3.1, pypdf 6.20.1, pdfplumber 0.11.10, discord.py 2.7.1, fastapi 0.143.1, uvicorn 0.54.0, psycopg 3.3.6, pgvector 0.5.1, pytest 9.1.1, ruff 0.17.0.
+- Not measured: `qwen3.5:4b` under 60 s (U1). n8n license and public portfolio display: not addressed (D9).
+
+## 3. Unverified items (test before relying on them)
+| ID | Question | How to test | When | Result |
+| --- | --- | --- | --- | --- |
+| U1 | Does `qwen3.5:4b` give a full cited answer within 60 s median on this laptop? | 10 warm questions with 3 chunks each, time them; note RAM | Day 2 to 3 (block c) | pending |
+| U2 | How is thinking switched off for Qwen3.5 in Ollama, and what does it do to time? | `ollama show qwen3.5:4b`, call `/api/show`, then a request with `"think": false`; compare seconds | Day 2 (block c) | pending |
+| U3 | Can a container reach Ollama and a host test server bound to 127.0.0.1 through `host.docker.internal`? | Start a throwaway container with curl and call both | Day 2 (block b) | pending |
+| U4 | Does n8n run alone from a pinned image, with a volume, TZ=Asia/Manila and port bound to 127.0.0.1? How much RAM? | Minimal compose service; open the UI; Task Manager | Day 2 (block b) | pending |
+| U5 | Does `pypdf` extract 3 of Eo's real PDFs well enough? | Compare with `pdfplumber` only if garbled | Day 9 | pending |
+| U6 | After the first run, does fastembed work with no network? Where is the model cache? | Disconnect network; embed one sentence | Day 3 | pending |
+| U7 | Does the Discord bot need any privileged intent for slash commands? | Read the discord.py and Discord docs while setting up | Day 10 | pending |
+| U8 | Is the API unreachable from another device on the network? | Check port mapping and try from the phone on the same Wi-Fi | Day 7 to 8 | pending |
+| U9 | Python version and tool installs (uv, Docker) on this laptop | Run `python --version`, `uv --version`, `docker --version` | Day 2 (block a) | pending |
+
+## 4. Knowledge graph (planned layout, nothing exists yet)
+- `compose.yaml`: db (pgvector), later api, n8n. `.env.example`. `Dockerfile` (API).
+- `migrations/`: numbered SQL files; `scripts/migrate.py`.
+- `src/agila/`: `db.py`, `chunking.py`, `embed.py`, `ingest.py` (text, md, url, pdf), `library.py` (supersede, archive, delete, list), `ask.py` (retrieval), `llm.py` (the only place that talks to Ollama), `api.py` (FastAPI), `cli.py`, `export_obsidian.py`, `bot/` (discord.py, thin).
+- `tests/`, `eval/` (golden set, frozen library, baseline), `n8n/` (exported workflows), `docs/` (PRD, decisions, setup-log, ace/).
+- Dependency rule: bot, CLI and n8n call the API only; the API calls `ask.py`/`library.py`; only `llm.py` calls Ollama.
+
+## 5. Lessons log (compaction)
+- 2026-10-15: The link `daveshap/ACE_Framework` is a different framework. We follow the HumanLayer approach in Eo's uploaded protocol.
+- 2026-10-15: Draft 3.1 scheduled setup work on Oct 15, but Oct 15 is the PRD day. Re-based: Day 1 = PRD/ACE lock, build Days 2 to 15.
+- 2026-10-15: n8n's current official Compose install is heavier than assumed (assistant sandbox and search services, 4 GB RAM advice). Added a minimal start check on Day 2 so surprises come early.
+- 2026-10-15: The review chat kept its own `docs/research-log.md`. Merged here and the old file was removed, so there is one source of truth; add new facts to this file only.
+- 2026-10-15: Container-to-host loopback reachability is not documented on the Docker page; do not design around it until U3 is tested.
