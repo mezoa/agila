@@ -410,6 +410,8 @@ Run this checklist before any demo (and on Day 15):
 | FR21 | When I run stats, then counts match the `query_log` rows. |
 | NFR3 | A secret scan of the full git history finds no `.env` content, token or key. |
 | NFR9 | The setup log records RAM use on Day 2 (Postgres + Ollama) and Day 7 (full stack). |
+| NFR15 | Given two simultaneous `/ask` calls, then Ollama runs one at a time and the second waits or gets a "busy" sentence; given a `pg_dump` backup restored into an empty database, then the document and chunk counts match. |
+| NFR16 | The repository has a LICENSE file and a GitHub Action that runs `ruff` and `pytest`. |
 
 ---
 

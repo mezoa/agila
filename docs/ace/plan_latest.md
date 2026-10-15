@@ -13,7 +13,7 @@
 - 1.3 Every in-scope FR has an acceptance sentence (PRD section 15). [Verification: spot-check FR2, FR5, FR6, FR7, FR12, FR26, FR27, FR28, FR35 (changed today)]
 - 1.4 Claude Code drafts `CLAUDE.md`; Eo edits it. [Verification: Eo has read it; no secrets]
 - 1.5 `.gitignore` exists (done). `git add` and commit "Add PRD, ACE files and project rules". [Verification: `git status` clean; `git log` shows the commit]
-- 1.6 Board in Obsidian (a note per block a to x) and Hub note. [Verification: notes exist]
+- 1.6 Board: the status log below is the board (one source of truth, no duplicate notes). Obsidian opens the project folder as the vault, so this file shows there. Sprint goal for Days 2 to 9: save text, Markdown and URLs, find their passages, and get a cited answer or a refusal from the CLI and API. [Verification: Eo can open this file in Obsidian]
 - 1.7 Learning log, job-search block.
 
 ### Tier 1: Foundation (35.5 h, Days 2 to 9)
@@ -50,8 +50,8 @@
 
 ## Status log
 Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
-- [x] 1.1 (Draft 3.3 saved), [x] 1.2 (review triaged, awaiting Eo's yes)
-- [ ] 1.3 to 1.7 (Day 1)
+- [x] 1.1 Draft 3.3 saved; [x] 1.2 review triaged and accepted by Eo; [x] 1.3 acceptance sentences cover every in-scope FR (NFR15, NFR16 added); [x] 1.4 `CLAUDE.md` drafted (Eo to read and edit); [x] 1.5 commit 81ca19f; [x] 1.6 board decision
+- [ ] 1.7 learning log and job-search block (Eo)
 - [ ] a, b, c, d, e, f, g, h, i, j, k, l, Gate 1
 - [ ] m, n, o, p, Gate 2
 - [ ] q, r, s, t, u, v, Gate 3, Day 15 tasks, w, x (optional)
