@@ -1,6 +1,6 @@
 # Research: Project Agila build (Days 1 to 15)
 
-- Version: v2 (2026-10-15, merged `docs/research-log.md`). Backup: `research_prev.md` (v1).
+- Version: v3 (2026-10-15, after the Day 1 review). Backup: `research_prev.md` (v2).
 - Phase rule: nothing in plan_latest.md may rely on an item in section 3 until it has been tested and moved to section 2.
 
 ## 1. Context and definitions
@@ -39,6 +39,16 @@ Confidence: medium. Rule: pin what you actually install; write the version in `d
 - PyPI JSON API versions on 2026-10-15: fastembed 0.9.0, trafilatura 2.3.1, pypdf 6.20.1, pdfplumber 0.11.10, discord.py 2.7.1, fastapi 0.143.1, uvicorn 0.54.0, psycopg 3.3.6, pgvector 0.5.1, pytest 9.1.1, ruff 0.17.0.
 - Not measured: `qwen3.5:4b` under 60 s (U1). n8n license and public portfolio display: not addressed (D9).
 
+## 2d. Facts verified for the Day 1 review (official pages, 2026-10-15)
+| ID | Fact | Source | Confidence |
+| --- | --- | --- | --- |
+| V11 | bge-small-en-v1.5 maximum sequence length is 512 tokens; the query instruction for retrieval is "Represent this sentence for searching relevant passages: " (trailing space); passages get no instruction; omitting it causes only a slight drop | https://huggingface.co/BAAI/bge-small-en-v1.5 | High |
+| V12 | Ollama structured output: pass a JSON schema in the `format` field (Pydantic `model_json_schema()` works; set temperature 0; include the schema in the prompt). The page does not say how it behaves with thinking models | https://docs.ollama.com/capabilities/structured-outputs | High; thinking behavior UNVERIFIED (U11) |
+| V13 | Discord `allowed_mentions`: `parse: []` blocks all mention pings; in interactions and webhooks only user mentions are parsed by default; `parse` cannot be combined with `users` or `roles` | https://docs.discord.com/developers/resources/message | High |
+| V14 | n8n Schedule Trigger discards missed runs by default; a "run most recent missed execution" option exists with the durable scheduler, stated to be on by default from n8n 2.45.0 (our log shows latest stable 2.42.7, so check the pinned version); the workflow must be published; default instance timezone is America/New_York | https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.scheduletrigger/ | High; availability in our version UNVERIFIED (U12) |
+| V15 | Docker: `-p 8000:8000` publishes on all host addresses (reachable from other machines); `-p 127.0.0.1:8000:8000` restricts to the host | https://docs.docker.com/engine/network/port-publishing/ | High |
+| V16 | The fastembed README does not say whether BGE models get the query instruction automatically; it only mentions "query" and "passage" prefix support | https://github.com/qdrant/fastembed | UNVERIFIED (U10) |
+
 ## 3. Unverified items (test before relying on them)
 | ID | Question | How to test | When | Result |
 | --- | --- | --- | --- | --- |
@@ -50,6 +60,9 @@ Confidence: medium. Rule: pin what you actually install; write the version in `d
 | U6 | After the first run, does fastembed work with no network? Where is the model cache? | Disconnect network; embed one sentence | Day 3 | pending |
 | U7 | Does the Discord bot need any privileged intent for slash commands? | Read the discord.py and Discord docs while setting up | Day 10 | pending |
 | U8 | Is the API unreachable from another device on the network? | Check port mapping and try from the phone on the same Wi-Fi | Day 7 to 8 | pending |
+| U10 | Does `query_embed` in the installed fastembed add the BGE query instruction? Does the instruction help on the golden set? | Read the installed source; compare hit@3 with and without | Day 9 (block l) | pending |
+| U11 | Does Ollama `format` (JSON schema) work with `qwen3.5:4b` when thinking is on or off? | Send the answer schema both ways | Day 2 to 3 (block c) | pending |
+| U12 | Does the pinned n8n version offer the missed-run option on the Schedule Trigger? | Open the node in the pinned version | Day 13 (block s) | pending |
 | U9 | Python version and tool installs (uv, Docker) on this laptop | Run `python --version`, `uv --version`, `docker --version` | Day 2 (block a) | pending |
 
 ## 4. Knowledge graph (planned layout, nothing exists yet)
@@ -64,4 +77,5 @@ Confidence: medium. Rule: pin what you actually install; write the version in `d
 - 2026-10-15: Draft 3.1 scheduled setup work on Oct 15, but Oct 15 is the PRD day. Re-based: Day 1 = PRD/ACE lock, build Days 2 to 15.
 - 2026-10-15: n8n's current official Compose install is heavier than assumed (assistant sandbox and search services, 4 GB RAM advice). Added a minimal start check on Day 2 so surprises come early.
 - 2026-10-15: The review chat kept its own `docs/research-log.md`. Merged here and the old file was removed, so there is one source of truth; add new facts to this file only.
+- 2026-10-15: Day 1 external review (24 findings): triaged in PRD Appendix D. Two design changes follow from verified facts: chunks are capped by tokens (512-token model limit), and the model returns chunk id + sentence number with an `answerable` flag so the program, not the model, writes the quote.
 - 2026-10-15: Container-to-host loopback reachability is not documented on the Docker page; do not design around it until U3 is tested.

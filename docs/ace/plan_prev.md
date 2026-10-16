@@ -1,61 +1,60 @@
 # Plan: Project Agila (Days 1 to 15, Oct 15 to Oct 29)
 
-- Version: v1 (2026-10-15). Backup: none yet.
-- Read first: `PROTOCOL.md`, `research_latest.md`. PRD: `docs/PRD.md` (Draft 3.2). Hours are from PRD section 5.
+- Version: v2 (2026-10-15, after the Day 1 external review; decisions in PRD Appendix D). Backup: `plan_prev.md` (v1).
+- Read first: `PROTOCOL.md`, `research_latest.md`. PRD: `docs/PRD.md` (Draft 3.3). Hours: PRD section 5 (planned 57.0 of 63 h; slack 6.0 h includes the gate checks).
 - Stop rule: any failed verification stops work. Mark the step `[x] Failed (cause)`, add a line to the Lessons log in research, return to Research.
-- Session rule: one block per coding session where possible; start a fresh session after each gate.
+- Session rule: one block per coding session where possible; fresh session after each gate.
 
 ## Checklist with verification
 
 ### Day 1 (Oct 15): lock, no code
-- 1.1 Save Draft 3.2 as `docs/PRD.md`; update `docs/decisions.md`. [Verification: files exist; PRD header says Draft 3.2]
-- 1.2 Review step: fresh-eyes chat reads PRD 3.2 and this plan; accept/reject each finding. [Verification: findings list with a decision on each]
-- 1.3 Acceptance sentences exist for every in-scope FR (PRD section 15). [Verification: every FR in sections 8 Tier 1 to 3 appears in section 15]
-- 1.4 Claude Code drafts `CLAUDE.md` (Python with uv, run ruff and pytest before each commit, never touch `.env`, read `docs/ace/PROTOCOL.md` first, loop-lab is read-only). Eo reads and edits it. [Verification: Eo has read it; no secrets inside]
-- 1.5 `.gitignore` lists `.env`, `raw/`, `.obsidian/`, `.venv/`, `n8n/` exports if public. `git add`, commit "Add PRD, ACE files and project rules". [Verification: `git status` clean; `git log` shows the commit]
-- 1.6 Board setup in Obsidian (one note per block a to l, Tier 2, Tier 3) and a Hub note with the Sprint 1 goal. [Verification: notes exist, each has status/estimate]
-- 1.7 Learning log: 5 lines. Job-search block. [Verification: written]
+- 1.1 Draft 3.3 saved as `docs/PRD.md`; `decisions.md` updated. [Verification: PRD header says Draft 3.3]
+- 1.2 Fresh-eyes review done; findings triaged (PRD Appendix D). Eo reads Appendix D and overrules any row. [Verification: Eo's yes or changes recorded]
+- 1.3 Every in-scope FR has an acceptance sentence (PRD section 15). [Verification: spot-check FR2, FR5, FR6, FR7, FR12, FR26, FR27, FR28, FR35 (changed today)]
+- 1.4 Claude Code drafts `CLAUDE.md`; Eo edits it. [Verification: Eo has read it; no secrets]
+- 1.5 `.gitignore` exists (done). `git add` and commit "Add PRD, ACE files and project rules". [Verification: `git status` clean; `git log` shows the commit]
+- 1.6 Board: the status log below is the board (one source of truth, no duplicate notes). Obsidian opens the project folder as the vault, so this file shows there. Sprint goal for Days 2 to 9: save text, Markdown and URLs, find their passages, and get a cited answer or a refusal from the CLI and API. [Verification: Eo can open this file in Obsidian]
+- 1.7 Learning log, job-search block.
 
-### Tier 1: Foundation (Days 2 to 9)
-- a. (Day 2, 3.0 h) Repo structure, `uv` project, `compose.yaml` with `pgvector/pgvector` (pin a tag, e.g. pg17 or pg18 chosen after checking Docker Hub), `.env.example`, `ruff`, `pytest`, `docs/setup-log.md`. [Verification: container survives `docker compose down` and `up`; one vector inserted and found with `<=>`; one passing test; run U9 checks]
-- b. (Day 2, 1.0 h) Throwaway container calls host Ollama and a host test server via `host.docker.internal` (U3). Start n8n alone from a pinned image with a volume, `TZ=Asia/Manila`, port `127.0.0.1:5678` (U4); note RAM. [Verification: results written in research section 3 with the date; if U3 fails, decide with Eo using PRD section 6 before any other plan step depends on it]
-- c. (Days 2 to 3, 1.5 h) Ollama spike: pull `qwen3.5:4b`; `ollama show`; `/api/show` thinking values; time a 3-chunk question with `think` default and `false`; note RAM (U1, U2). [Verification: numbers in setup-log and research; decision recorded: thinking on/off, num_ctx value, keep_alive]
-- d. (Day 3, 2.0 h) Schema and numbered migrations per PRD section 10; `db.py`; migration script. [Verification: one command builds an empty database; test inserts and reads a chunk and cleans up]
-- e. (Days 3 to 4, 4.5 h) Chunker (read loop-lab `rag.py` first, reuse `chunk_md` shape), fastembed embeddings (check U6), atomic save for text and Markdown. [Verification: acceptance FR1, FR4, FR5, FR6, FR8 pass; no chunk over 600 words]
-- f. (Days 4 to 5, 2.5 h) URL save with `trafilatura`, 15 s timeout, 200-character rule, URL normalization. [Verification: acceptance FR2 on 3 saved HTML fixtures plus one live URL by hand; typo URL gives one readable error]
-- g. (Day 5, 2.5 h) Supersede, archive, delete, list. [Verification: acceptance FR7, FR18, FR19, FR20]
-- h. (Days 5 to 6, 2.5 h) Retrieval top 3 by cosine, threshold, `/search`. [Verification: acceptance FR9, FR10, FR13 on fixtures]
-- i. (Days 6 to 7, 5.0 h) `llm.py`: prompt with delimiters, JSON contract, quote and chunk-id check, one retry, passages-only fallback, timeouts, injection test. [Verification: acceptance FR11, FR12, FR17, FR34 with a fake scripted model; one live injection test with `qwen3.5:4b`]
-- j. (Days 7 to 8, 3.5 h) CLI, FastAPI with key, `/docs`, `/health`, localhost binding, `query_log`. [Verification: acceptance FR25, FR26, FR35; U8 checked; RAM measured with full stack (Day 7)]
-- k. (Day 8, 1.0 h) API Dockerfile and container start. [Verification: `docker compose up` brings up db and api; `/health` answers; acceptance FR38 dry run]
-- l. (Days 8 to 9, 4.0 h) Golden set (20 questions, 14 answerable, 6 not), frozen test library, eval script, baseline. Draft questions earlier while saving documents (Days 3 to 6). [Verification: acceptance FR33; M1 and M2 reported with the honest-limits note]
-- **Gate 1 (Day 9):** save text/md/url; ask from CLI and API; cited answer or refusal; fallback works; eval baseline saved; pytest and ruff pass. [Verification: run all; tag `v0.1-core`]
+### Tier 1: Foundation (35.5 h, Days 2 to 9)
+- a. (Day 2, 3.0 h) Repo, `uv`, `compose.yaml` with pinned `pgvector/pgvector`, `.env.example`, `ruff`, `pytest`, `docs/setup-log.md`; Postgres 18 volume path differs from 17 (research 2c). [Verification: restart survives; vector inserted and found with `<=>`; one passing test; U9 versions recorded]
+- b. (Day 2, 1.0 h) Throwaway container calls host Ollama and a host server through `host.docker.internal` (U3); n8n alone from a pinned image, volume, `TZ=Asia/Manila`, port `127.0.0.1:5678` (U4), RAM noted. [Verification: results in research section 3; if U3 fails, decide the route with Eo (PRD section 6) before step j]
+- c. (Days 2 to 3, 1.5 h) Pull `qwen3.5:4b`; `/api/show` thinking values; time a 3-chunk question with `think` default and `false`; test `format` JSON schema with the answer shape (U1, U2, U11). [Verification: numbers in setup-log; decisions recorded: thinking, num_ctx, keep_alive, whether `format` works]
+- d. (Day 3, 2.0 h) Schema per PRD section 10 with `timestamptz`; numbered migrations; `db.py`. [Verification: one command builds an empty database; insert/read/clean test]
+- e. (Days 3 to 4, 4.5 h) Read loop-lab `rag.py`; token-based chunker (cap 400 tokens incl. title and heading, target about 300); fastembed (U6, U10); atomic save text and Markdown; embedded text = title + heading + chunk. [Verification: FR1, FR4, FR5, FR6, FR8; a long-chunk test stays within 512 tokens]
+- f. (Days 4 to 5, 3.0 h) URL save with `trafilatura`: 15 s timeout, scheme allow-list, private-address block (after redirects), 5-redirect cap, 5 MB cap, content-type check, 3-sentence rule; normalization. Save 5 real phone links as a separate sample and note results (report only). [Verification: FR2 fixtures incl. localhost, private IP, redirect-to-private, 50 MB, login wall]
+- g. (Day 5, 2.5 h) Supersede with `--replace` rule for label collisions, archive, delete, list. [Verification: FR7, FR18, FR19, FR20]
+- h. (Days 5 to 6, 2.5 h) Retrieval top 3, threshold, `/search`. [Verification: FR9, FR10, FR13; `/search` does not change `last_asked_at`]
+- i. (Days 6 to 7, 5.0 h) `llm.py`: delimiters, `format` schema with `answerable`, program-copied quote, retry once, fallback, timeouts, one-call lock, injection test. [Verification: FR11, FR12, FR17, FR34; live injection test]
+- j. (Days 7 to 8, 3.5 h) CLI, FastAPI with key, `/docs`, `/health` (database and Ollama), `query_log`. [Verification: FR25, FR26, FR35; U8; RAM with full stack (Day 7)]
+- k. (Day 8, 2.0 h) API Dockerfile; Compose healthchecks and restart policy; port published as `127.0.0.1:8000:8000`; `pg_dump` backup script and a tested restore. [Verification: `docker compose config` shows the 127.0.0.1 publish; `/health` with Ollama stopped names Ollama; restore test passes]
+- l. (Days 8 to 9, 5.0 h) Golden set (20 questions: 14 answerable, 6 not), frozen test library, eval script, tuning on the dev half (threshold, chunk size, query prefix), baseline; hand-grade the 14 answers (M10). Draft questions earlier, while saving documents on Days 3 to 6. [Verification: FR33; M1, M2, M10 reported with the honest-limits note]
+- **Gate 1 (Day 9, 0.5 h):** all of the above; tag `v0.1-core`.
 
-### Tier 2: Reach (Days 9 to 11)
-- m. (Days 9 to 10, 2.5 h) Text PDF with `pypdf` (U5). [Verification: acceptance FR3 with a text PDF and a scanned fixture]
-- n. (Day 10, 1.5 h) Obsidian one-way export to `raw/agila/`. [Verification: acceptance FR28 including before/after folder listing]
-- o. (Days 10 to 11, 5.0 h) Discord bot: app, token in `.env`, allow-list, `/ping` with defer, then `/ask`, `/save`, `/list`, `/archive`, `/delete`, splitting. Check U7. [Verification: acceptance FR27 and FR40 in the private server; reply over 2000 characters arrives as several messages]
-- p. (Day 11, 1.0 h) `--private` flag. [Verification: acceptance FR41 including `/stale` and the digest later]
-- **Gate 2 (Day 11):** tag `v0.2`.
+### Tier 2: Reach (10.5 h, Days 10 to 12)
+- m. (Day 10, 2.5 h) Text PDF with `pypdf` (U5). [Verification: FR3]
+- n. (Day 10, 2.0 h) Obsidian export with `export_pending` and `export --retry`. [Verification: FR28]
+- o. (Days 11 to 12, 5.0 h) Discord bot: token in `.env`, allow-list, `/ping` defer, commands, splitting, `allowed_mentions` empty; start/stop/log steps in the setup log (U7). [Verification: FR27, FR40]
+- p. (Day 12, 1.0 h) `--private`; private documents never reach Discord, `/stale`, the digest, the bot or n8n. [Verification: FR41]
+- **Gate 2 (Day 12, 0.5 h):** tag `v0.2`.
 
-### Tier 3: Automation and release (Days 12 to 15)
-- q. (Day 12, 1.0 h) `/stale` endpoint. [Verification: acceptance FR39 including a backdated private document that must not appear]
-- r. (Day 12, 1.0 h) n8n spike: webhook "hello" calls the local API using the route decided in block b. [Verification: n8n run is green]
-- s. (Day 12, 2.5 h) Workflow B weekly digest via a Discord channel webhook URL (in `.env`/n8n credential, not in chat). [Verification: acceptance FR30, with data and with none]
-- t. (Day 13, 3.0 h) Workflow A save pipeline; `SAVE_VIA_N8N` switch. [Verification: acceptance FR29 incl. a bad URL]
-- u. (Day 13, 1.5 h) Exports, screenshots, two-minute demo script (not published, D9). [Verification: acceptance FR32]
-- v. (Day 14, 2.0 h) README, fresh-clone test in an empty folder, backup video. [Verification: M6 time recorded under 20 minutes; demo checklist passes]
-- w. (Day 14, 2.5 h) Optional only if ahead: `ask-general` (FR14), stats (FR21), age warning (FR15). [Verification: their acceptance sentences]
-- **Gate 3 (Day 14).**
-- x. (Day 15) Buffer; secret scan (NFR3) of full history; tag `v1.0`. Stretch FR36 video captions only if Gate 3 passed and nothing slipped (then research first: re-verify the caption library and its terms). [Verification: gitleaks clean; tag exists]
+### Tier 3: Automation and release (11.0 h, Days 12 to 15)
+- q. (Day 12, 1.0 h) `/stale`. [Verification: FR39 incl. a backdated private document]
+- r. (Day 12, 1.0 h) n8n spike: webhook "hello" calls the local API using the route decided in b. [Verification: green run]
+- s. (Day 13, 2.5 h) Workflow B via a Discord channel webhook URL (secret in `.env`/n8n credential); workflow timezone Asia/Manila; missed-run option if the pinned version has it (U12). [Verification: FR30; with data and with none]
+- t. (Days 13 to 14, 3.0 h) Workflow A (Should; first to drop). [Verification: FR29 incl. bad URL]
+- u. (Day 14, 1.5 h) Exports, screenshots, demo script (unpublished, D9). [Verification: FR32]
+- v. (Day 14, 2.0 h) README (host prerequisites first), LICENSE (Eo chooses), GitHub Action for `ruff` and `pytest`, fresh-clone test, backup video. [Verification: M6 under 20 minutes; demo checklist]
+- **Gate 3 (Day 15, 0.5 h).**
+- Day 15 slack (4.0 h): catch-up, secret scan (NFR3), tag `v1.0`. Optional only after Gate 3: w `ask-general` + stats + age warning (2.5 h, needs 3.0 h slack); x video captions (4 h, only if Workflow A was dropped; re-verify the library and its terms first).
 
 ## Status log
 Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
-- [ ] 1.1 to 1.7 (Day 1)
+- [x] 1.1 Draft 3.3 saved; [x] 1.2 review triaged and accepted by Eo; [x] 1.3 acceptance sentences cover every in-scope FR (NFR15, NFR16 added); [x] 1.4 `CLAUDE.md` drafted (Eo to read and edit); [x] 1.5 commit 81ca19f; [x] 1.6 board decision
+- [ ] 1.7 learning log and job-search block (Eo)
 - [ ] a, b, c, d, e, f, g, h, i, j, k, l, Gate 1
 - [ ] m, n, o, p, Gate 2
-- [ ] q, r, s, t, u, v, w (optional), Gate 3
-- [ ] x (Day 15)
+- [ ] q, r, s, t, u, v, Gate 3, Day 15 tasks, w, x (optional)
 
 ## Drop order if behind (from PRD)
-Optional and stretch; then Workflow A; then Discord commands other than `/ask` and `/save`; then Obsidian export. Never drop Tier 1.
+Optional (w, x); Workflow A; Discord commands other than `/ask` and `/save`; Obsidian export. Never drop Tier 1.

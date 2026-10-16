@@ -52,6 +52,7 @@
 Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
 - [x] 1.1 Draft 3.3 saved; [x] 1.2 review triaged and accepted by Eo; [x] 1.3 acceptance sentences cover every in-scope FR (NFR15, NFR16 added); [x] 1.4 `CLAUDE.md` drafted (Eo to read and edit); [x] 1.5 commit 81ca19f; [x] 1.6 board decision
 - [ ] 1.7 learning log and job-search block (Eo)
+- [ ] Day 2 (Oct 16): runbook written (Claude Docs "Project Agila: Day 2 Runbook"); a, b, c(start) not started. Note: Eo installed qwen3.5:9b; block c times 9b and 4b, Eo decides after the table (D3 to be revisited). n8n tag seen on Docker Hub 2026-10-16: 2.43.6 (research log said 2.42.7 on Oct 12).
 - [ ] a, b, c, d, e, f, g, h, i, j, k, l, Gate 1
 - [ ] m, n, o, p, Gate 2
 - [ ] q, r, s, t, u, v, Gate 3, Day 15 tasks, w, x (optional)
