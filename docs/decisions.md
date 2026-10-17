@@ -15,6 +15,6 @@
 | Video links (FR36) | Backlog; stretch on Day 15 only from the buffer | Time | `youtube-transcript-api` is the candidate; re-verify then |
 | Chunking | Token-based cap of 400 tokens (target about 300) including title and heading | bge-small-en-v1.5 reads 512 tokens (checked 2026-10-15) | Embedded text = title + heading + chunk; query prefix decided on the golden set (U10) |
 | Answer format | Ollama `format` JSON schema with `answerable`, chunk id and sentence number; the program copies the quote | A 4B model paraphrases quotes | Behavior with thinking on: U11 |
-| Ports | Publish the API as `127.0.0.1:8000:8000` | `8000:8000` exposes it to the network (Docker docs) | Checked by `docker compose config` |
+| Ports | Database published as `127.0.0.1:5433->5432` (host 5432 is taken by Eo's local Windows PostgreSQL, process `postgres`; seen 2026-10-17). Publish the API as `127.0.0.1:8000:8000` | `8000:8000` exposes it to the network (Docker docs) | Checked by `docker compose config` |
 | Schedule | 57.0 h planned of 63 h; Workflow A dropped first | Review finding: buffer was too thin | Gates inside slack |
 | Process | ACE: Research, Plan, Implement; files in `docs/ace/` | Avoid hallucinated facts and context drift | Two versions per file |

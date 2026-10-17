@@ -54,6 +54,7 @@ Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
 - [ ] 1.7 learning log and job-search block (Eo)
 - [ ] Day 2 (Oct 16): runbook written (Claude Docs "Project Agila: Day 2 Runbook"); a, b, c(start) not started. Note: Eo installed qwen3.5:9b; block c times 9b and 4b, Eo decides after the table (D3 to be revisited). n8n tag seen on Docker Hub 2026-10-16: 2.43.6 (research log said 2.42.7 on Oct 12).
 - [~] a (2026-10-17): uv project, pyproject/ruff, compose.yaml, .env.example, smoke test, setup-log done; ruff and pytest pass. [x] Failed (Docker daemon not running: restart test and `<=>` vector test not run). Resume after Docker Desktop is started.
+- [~] Docker engine fixed (2026-10-17): `docker compose up -d` now pulls the image; next failure is host port 5432 refused by Windows (runbook A4). Resume: check netsh excluded ranges, change host port in compose.yaml, rerun A4.
 - [ ] Docker fix (2026-10-17): runbook Step 0 added (diagnose, install or start Docker Desktop with the WSL 2 engine, gate `docker run --rm hello-world`); research U13. Decision: all Agila commands run in Windows PowerShell, not Ubuntu. Resume block a at A4 after the gate.
 - [ ] b, c, d, e, f, g, h, i, j, k, l, Gate 1
 - [ ] m, n, o, p, Gate 2
