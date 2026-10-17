@@ -29,6 +29,10 @@
 - Vector test (`docker compose exec -T db psql ...`): `CREATE EXTENSION vector` (already present), table with `vector(3)`, three rows, `ORDER BY v <=> '[1,0,0]'` returned ids 1, 3, 2 with distances 0.0000, 0.0061, 1.0000. Works.
 - Restart test: `docker compose down` (volume kept), `docker compose up -d`, health went back to `healthy`, the 3 rows were still there. Data survives. Test table dropped afterwards.
 
+### Block a re-run (2026-10-17, later)
+- Vector test (A4) repeated with `docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'` (container env, `.env` not read): rows 1, 3, 2 with distances 0.0000, 0.0061, 1.0000. Pass.
+- Restart test (A5) repeated: `docker compose down`, `docker compose up -d`, health `healthy`, same 3 rows and distances. Pass. Test table dropped.
+
 ## Day 2 (2026-10-17), block b: host reachability (U3) and n8n alone (U4)
 - Image pinned: `n8nio/n8n:2.43.6`, digest `sha256:dd580fe1ab6e99e85bc66f2acf8bc8c5e9409fbe61b2e2803c5024403ef52833` (from `docker images --digests`).
 - Container `n8n` (created 2026-10-17 09:15 UTC), checked with `docker inspect`: port `127.0.0.1:5678->5678`, volume `n8n_data` at `/home/node/.n8n`, env `TZ=Asia/Manila` and `GENERIC_TIMEZONE=Asia/Manila`.
@@ -46,6 +50,23 @@ HTTP %{http_code}
   - `http://host.docker.internal:11434/api/version` -> `{"version":"0.40.4"}` `HTTP 200`
   - `http://host.docker.internal:8765/index.txt` -> `hello-from-host` `HTTP 200`
 - Both reachable, including the server bound only to 127.0.0.1.
+
+## Day 2 (2026-10-17), block c (part): think timing, 9b vs 4b (U1, U2)
+- Test: `POST http://127.0.0.1:11434/api/generate`, `stream=false`, 3 passages and the question "Is pgvector search exact or approximate without an index?", Ollama 0.40.4. `think` left out (default) or `false`. Each setting run twice; the table uses run 2 (model already loaded). Script: not committed (scratch file).
+- `ollama ps` default context 4096 for both models. 9b was sampled during the runs (steady); 4b was read right after the runs while still loaded, not during a request.
+
+| Model | think | seconds (run 2) | thinking chars | ollama ps SIZE | answer correct? |
+| --- | --- | --- | --- | --- | --- |
+| qwen3.5:9b | default | 145.6 (run 1: 162.2) | 2753 | 6.2 GB, 73%/27% CPU/GPU | yes ("exact ... checks every row") |
+| qwen3.5:9b | false | 4.2 (run 1: 2.3) | 0 | 6.2 GB, 73%/27% CPU/GPU | yes |
+| qwen3.5:4b | default | 63.9 (run 1: 64.5) | 3155 | 3.8 GB, 52%/48% CPU/GPU | yes |
+| qwen3.5:4b | false | 0.9 (run 1: 1.2) | 0 | 3.8 GB, 52%/48% CPU/GPU | yes |
+
+- Finding (U2): both models think by default under Ollama 0.40.4 (thinking chars above 0 with `think` left out). `"think": false` per request switches it off and cuts time from 146 s to 4 s (9b) and 64 s to 0.9 s (4b).
+- Finding (U1, partial): this is one short question with 3 short passages, not the 10-question test. With default thinking, 4b took about 64 s (over the 60 s target) and 9b about 146 s. With `think:false` both are far under 60 s. Real 3-chunk prompts are longer, so the 10-question timing is still to do.
+- Finding: all 8 answers say "exact", so no wrong answers on this question. Answer style varies (9b run 2 began with "Exact." on its own line).
+- Finding: `ollama ps` shows a GPU share (27% and 48%) even though the notes say CPU only. Not investigated; record only.
+- Not done yet in block c: `/api/show` thinking values, `format` JSON schema test (U11), the 10-question run.
 
 ## Other
 - `uv --version` -> uv 0.12.17 (line carried over from the earlier `docs/setup-logs.md`, which can be deleted).

@@ -58,7 +58,9 @@ Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
 - [ ] Docker fix (2026-10-17): runbook Step 0 added (diagnose, install or start Docker Desktop with the WSL 2 engine, gate `docker run --rm hello-world`); research U13. Decision: all Agila commands run in Windows PowerShell, not Ubuntu. Resume block a at A4 after the gate.
 - [x] Docker engine and port (2026-10-17 16:12): `agila-db-1` healthy on host port 5433 (5432 held by Eo's local Windows PostgreSQL). Remaining in block a: vector `<=>` test, restart test, versions in setup-log, commit. Day 3 db code and tests must use port 5433.
 - [x] a (2026-10-17): vector `<=>` test and restart test passed, versions in setup-log, ruff and pytest pass; committed.
-- [ ] b, c, d, e, f, g, h, i, j, k, l, Gate 1
+- [x] b (2026-10-17): U3 and U4 passed, results in research section 3 and setup-log.
+- [~] c (2026-10-17): think timing done for one question (U1, U2 partial); `/api/show`, `format` test (U11) and the 10-question run still open.
+- [ ] d, e, f, g, h, i, j, k, l, Gate 1
 - [ ] m, n, o, p, Gate 2
 - [ ] q, r, s, t, u, v, Gate 3, Day 15 tasks, w, x (optional)
 
