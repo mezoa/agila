@@ -59,7 +59,8 @@ Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
 - [x] Docker engine and port (2026-10-17 16:12): `agila-db-1` healthy on host port 5433 (5432 held by Eo's local Windows PostgreSQL). Remaining in block a: vector `<=>` test, restart test, versions in setup-log, commit. Day 3 db code and tests must use port 5433.
 - [x] a (2026-10-17): vector `<=>` test and restart test passed, versions in setup-log, ruff and pytest pass; committed.
 - [x] b (2026-10-17): U3 and U4 passed, results in research section 3 and setup-log.
-- [~] c (2026-10-17): think timing done for one question (U1, U2 partial); `/api/show`, `format` test (U11) and the 10-question run still open.
+- [~] c (2026-10-17): think timing done for one question (U1, U2 partial); `/api/show` done (C1, 2026-10-19); `format` test done (C2, 2026-10-19, U11 passed, see setup-log); the 10-question run (C3) done 2026-10-19 (first run: 4b median 4.2 s, 9b 9.9 s, 9/10 each; lean 4b; see setup-log); run 2 (2026-10-19): 10/10 each, 4b median 4.5 s, 9b 13.1 s, so the run-1 misses were random and 4b is the recommended default. Remaining for Eo: confirm the model choice (D3) and tick c.
+- [x] C1 to C5 (2026-10-19 16:33): `/api/show`, `format` test, 10-question runs, keep_alive and `num_ctx`, decisions recorded (decisions.md, research U1/U2/U11, new U14 to U16). Block c itself stays `[~]` until Eo confirms D3. `scripts/ollama_spike.py` is temporary: delete once `llm.py` exists.
 - [ ] d, e, f, g, h, i, j, k, l, Gate 1
 - [ ] m, n, o, p, Gate 2
 - [ ] q, r, s, t, u, v, Gate 3, Day 15 tasks, w, x (optional)

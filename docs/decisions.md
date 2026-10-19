@@ -18,3 +18,9 @@
 | Ports | Database published as `127.0.0.1:5433->5432` (host 5432 is taken by Eo's local Windows PostgreSQL, process `postgres`; seen 2026-10-17). Publish the API as `127.0.0.1:8000:8000` | `8000:8000` exposes it to the network (Docker docs) | Checked by `docker compose config` |
 | Schedule | 57.0 h planned of 63 h; Workflow A dropped first | Review finding: buffer was too thin | Gates inside slack |
 | Process | ACE: Research, Plan, Implement; files in `docs/ace/` | Avoid hallucinated facts and context drift | Two versions per file |
+| Thinking | Always send `think:false` on every request | Default is thinking on; it cost 145.6 s vs 4.2 s (9b) and 63.9 s vs 0.9 s (4b) (C1, block c) | U2 passed; `format` with thinking on untested (U11) |
+| Default model | `qwen3.5:4b`; `qwen3.5:9b` optional (supersedes the older "9b dropped" row) | Same accuracy in the spike (19/20 each, 0 invented), 9b about 2.5 to 3x slower | Spike was small and did not check citations (U15); recheck on the golden set |
+| Structured output | `format` JSON schema plus Pydantic validation, one retry, tag normalization (lowercase, hyphenate, dedupe) in `llm.py` | Valid JSON 26/26 with `think:false`; tag case and wording vary at temp 1 | Lower temperature effect: U14 |
+| keep_alive | `"30m"` on every request | Accepted by Ollama (`ollama ps` UNTIL 29 minutes); avoids the ~30 s cold start | Set explicitly; defaults can change by version |
+| Context size | `num_ctx` 8192 set explicitly and sent identically on every request; log `prompt_eval_count` from each reply and warn above 80% of `num_ctx` (about 6,500) | Default is 4096; at 8192 size 3.8 to 3.9 GB, CPU/GPU 54/46 | Speed at 8192 not measured (U16) |
+| Prompt rule | Prompts must say to answer only from the given passages | The 4b sometimes added details not in the source (C2) | Test with the injection and golden sets |

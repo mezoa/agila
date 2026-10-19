@@ -83,3 +83,42 @@ These come from Eo's own run and sit beside the Claude Code run above; the numbe
 - Finding: all 8 answers say "exact", so no wrong answers on this question. Answer style varies (9b run 2 began with "Exact." on its own line).
 - Finding: `ollama ps` shows a GPU share (27% and 48%) even though the notes say CPU only. Not investigated; record only.
 - Not done yet in block c: `/api/show` thinking values, `format` JSON schema test (U11), the 10-question run.
+
+### C1 /api/show (2026-10-19)
+- qwen3.5:4b: 4.2B Q4_K_M, capabilities completion/vision/tools/thinking, thinking values [false,true] default true, max ctx 262144, Apache-2.0
+- qwen3.5:9b: 9.7B Q4_K_M, same capabilities and thinking field, max ctx 262144, Apache-2.0
+- Both default to temperature 1, top_k 20, top_p 0.95, presence_penalty 1.5
+- Conclusion: thinking is on by default; send think:false per request. Resolves U1/U2 (field is top-level `thinking`).
+
+### C2 structured output (2026-10-19) - U11 PASSED
+- format JSON schema + think:false: 6/6 runs valid, 3 tags each (4b x3, 9b x3)
+- Warm: 4b ~7.6 s, 9b ~9.9 s. Cold first call ~30 s (also when switching models)
+- Tags vary in case/wording at default sampling (temp 1) -> normalize + validate in llm.py
+- 4b summaries sometimes add details not in the source -> add "use only the given text"
+- Caveat: one prompt, n=6; recheck in C3 with real questions
+
+### C3 cited-answer timing (2026-10-19) - U11 holds (20/20 valid JSON here, 6/6 in C2)
+Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`). 10 questions each.
+- 4b: median 4.2 s (2.6-5.7), 9/10 correct (missed Q5 as false negative), 0 invented answers
+- 9b: median 9.9 s (7.0-14.4), 9/10 correct (missed Q6 as false negative), 0 invented answers
+- Per question, 4b (s): 5.3, 5.0, 5.6, 5.7, 3.5, 5.0, 3.0, 3.4, 2.9, 2.6. 9b (s): 12.5, 13.1, 14.4, 12.5, 12.7, 7.2, 7.2, 7.1, 7.0, 7.4
+- Answerable replies take ~2x longer than refusals (output length)
+- Not tested: citation correctness, real-size chunks, run-to-run variance
+- Lean: 4b default (2.4x faster, same score)
+
+### C3 cited-answer timing, 2 runs (2026-10-19) - U11 holds
+- Run 2: 4b 10/10 correct, median 4.5 s; 9b 10/10 correct, median 13.1 s. Valid JSON 20/20 per model across both runs
+- Run-1 misses (4b Q5, 9b Q6) did not repeat -> random variation, not a systematic weakness. Combined 19/20 each, 0 invented answers
+- Time follows answer length: real answers 4b ~4.4-7 s / 9b ~13-15 s; refusals 4b ~3 s / 9b ~7 s
+- Decision input: same accuracy, 9b ~2.5-3x slower -> 4b default
+- Still untested: citation correctness, real-size chunks (check with the golden set later)
+
+### C4 keep_alive and num_ctx (2026-10-19)
+- keep_alive `"30m"` accepted (`ollama ps` showed UNTIL 29 minutes from now)
+- qwen3.5:4b runs 52%/48% CPU/GPU at 3.8 GB; default context is already 4096 (`ollama ps` CONTEXT column)
+- `num_ctx` 8192 tested: SIZE 3.8 -> 3.9 GB, CPU/GPU 52/48 -> 54/46. Speed at 8192 not measured (U16)
+
+### C5 decisions (2026-10-19)
+- Recorded in `docs/decisions.md`: `think:false` always, 4b default (9b optional), `format` schema + Pydantic + one retry + tag normalization, keep_alive 30m, `num_ctx` 8192 with a warning above 80%, answer-only-from-passages prompts
+- Research: U2 PASSED; U1 and U11 PARTIAL; new U14 (temperature and tags), U15 (citation correctness), U16 (8192 speed)
+- `scripts/ollama_spike.py` is temporary: delete it once `llm.py` exists (not deleted now)
