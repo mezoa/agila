@@ -122,3 +122,11 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Recorded in `docs/decisions.md`: `think:false` always, 4b default (9b optional), `format` schema + Pydantic + one retry + tag normalization, keep_alive 30m, `num_ctx` 8192 with a warning above 80%, answer-only-from-passages prompts
 - Research: U2 PASSED; U1 and U11 PARTIAL; new U14 (temperature and tags), U15 (citation correctness), U16 (8192 speed)
 - `scripts/ollama_spike.py` is temporary: delete it once `llm.py` exists (not deleted now)
+
+## Day 3 (2026-10-19), block d: schema, migrations, db.py
+- Installed: `psycopg[binary]` 3.3.6 (with psycopg-binary 3.3.6) and `pgvector` 0.5.1 via `uv add "psycopg[binary]" pgvector`
+- Migrate (applies `migrations/*.sql` in order, one transaction each): `uv run --env-file .env python -m agila.db migrate` -> first run `applied: 0001_init.sql`, second run `nothing to apply`; `\dt` shows 5 tables + `schema_migrations`
+- Fast tests (no database): `uv run pytest` -> 5 passed, 7 deselected. Database tests: `uv run --env-file .env pytest -m db -v` -> 7 passed (uses a throwaway `agila_test` database, dropped afterwards)
+- Missing variable: `uv run --no-env-file python -m agila.db migrate` -> `migrate failed: Missing environment variable POSTGRES_HOST` (no value shown)
+- Gotchas: plain `uv run` does not read `.env` (use `--env-file .env`); `register_vector` fails before the `vector` extension exists, so `migrate` connects with `register=False`
+- `.env.example` now has POSTGRES_HOST=127.0.0.1 and POSTGRES_PORT=5433

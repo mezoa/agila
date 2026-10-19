@@ -48,6 +48,56 @@
 - **Gate 3 (Day 15, 0.5 h).**
 - Day 15 slack (4.0 h): catch-up, secret scan (NFR3), tag `v1.0`. Optional only after Gate 3: w `ask-general` + stats + age warning (2.5 h, needs 3.0 h slack); x video captions (4 h, only if Workflow A was dropped; re-verify the library and its terms first).
 
+## Block d plan: schema, migrations, db.py (Day 3, 2.0 h) - PLAN ONLY, waiting for Eo's approval
+Written 2026-10-19. Schema comes from PRD section 10 only (no `users`, no `space_members`). Research: V17 to V20, U17 to U19.
+
+### Choices (confirm or change)
+1. **Packages:** `uv add "psycopg[binary]" pgvector` (3.3.6 and 0.5.1 on 2026-10-19; `uv.lock` pins the exact versions). No numpy, no ORM.
+2. **Settings from `.env`:** recommended `uv run --env-file .env ...`. No new dependency; `db.py` reads only `os.environ`, so the same code works inside Docker later (Compose passes the variables). Not python-dotenv. Whether `uv run` loads `.env` without the flag is unverified (U18), so every command names the flag.
+3. **Migrations:** `migrations/0001_init.sql` plus a `schema_migrations(version text primary key, applied_at timestamptz not null default now())` table that the runner (not the SQL file) creates. `migrate` applies unapplied files in filename order, each file and its `schema_migrations` row in one transaction, stops at the first error, and a second run prints "nothing to apply". No advisory lock (YAGNI, one user).
+4. **Tables (ids are `bigint generated always as identity`, all times `timestamptz`):**
+   - `spaces(id, name not null, kind not null check in ('local','cloud'), owner_id text null)`. `owner_id` has no foreign key because `users` is backlog. The migration inserts one row: name `default`, kind `local`.
+   - `documents(id, space_id not null references spaces, title not null, source_label, source_url, normalized_url, source_type not null check in ('web','pdf','text','markdown','video'), identity_key not null, content_hash not null, status not null default 'active' check in ('active','archived','superseded'), visibility not null default 'anywhere' check in ('anywhere','laptop_only'), supersedes_id references documents on delete set null, saved_at not null default now(), last_asked_at null, page_count null)`.
+   - Partial unique index on `(space_id, identity_key) where status = 'active'` (FR7). `identity_key` and `content_hash` are NOT NULL so nulls cannot bypass the index.
+   - `chunks(id, document_id not null references documents on delete cascade, position not null, heading, page, start_seconds null, text not null, embedding vector(384) not null, created_at not null default now(), unique (document_id, position))`. No vector index (PRD section 10).
+   - `query_log(id, asked_at not null default now(), channel not null check in ('cli','web','discord'), chunk_ids bigint[] not null default '{}', status not null check in ('answered','refused','fallback'), seconds double precision not null)`. `chunk_ids` has no foreign key so deleting a document never breaks the log (FR35: no secrets, no full text).
+   - `settings(key text primary key, value text not null)`; the migration inserts `embedding_model = BAAI/bge-small-en-v1.5` and `embedding_dim = 384`.
+   - `create extension if not exists vector;` comes first in the file.
+5. **`db.py`:** `connect()` reads `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` and calls `psycopg.connect(host=..., port=..., user=..., password=..., dbname=...)` (keyword arguments, no URL). A missing or empty variable raises an error naming the variable only. The password is never logged or put in an error message. `connect()` takes an optional `dbname` override (tests use it) and a `register=True` flag: `migrate` connects with `register=False` because the `vector` type may not exist yet (U17); everything else calls `register_vector`. The migrations folder defaults to `<project root>/migrations` and can be overridden by an argument (tests and the later API image need that). Command: `uv run --env-file .env python -m agila.db migrate`.
+6. **Tests:** marker `db` declared in `pyproject.toml` with `addopts = "-m 'not db'"`, so `uv run pytest` skips them and needs no `.env` or running database; `uv run --env-file .env pytest -m db` runs them (that a command-line `-m` overrides `addopts` is U19). A fixture connects to the maintenance database `postgres`, runs `drop database if exists agila_test with (force)` and `create database agila_test`, yields settings for it, and drops it afterwards. A guard refuses to drop any database not named exactly `agila_test`; the tests never connect to `agila`.
+7. **Tests (7 `db`, 1 plain):** (a) migrate on an empty database creates all tables plus the default space and settings rows; (b) a second run applies nothing; (c) insert a document and a chunk with a 384-number vector and read both back; (d) the same vector gives `<=>` distance 0; (e) deleting the document removes its chunks; (f) an invalid `status` is rejected; (g) the `saved_at`, `last_asked_at`, `created_at`, `asked_at` and `applied_at` columns have type `timestamp with time zone`. Plain test: with `POSTGRES_HOST` unset and a fake password set, `connect()` raises an error that names `POSTGRES_HOST` and does not contain the password.
+
+### Files
+| File | Action | Purpose |
+| --- | --- | --- |
+| `migrations/0001_init.sql` | create | Creates the extension, the five tables, their constraints, the partial unique index, and the default space and settings rows. |
+| `src/agila/db.py` | create | Opens a Postgres connection from environment variables and applies the numbered migration files (`python -m agila.db migrate`). |
+| `tests/test_db.py` | create | Holds the throwaway `agila_test` fixture, the seven `db` tests and the missing-variable test. |
+| `pyproject.toml` | edit | Adds `psycopg[binary]` and `pgvector`, declares the `db` marker and skips it by default. |
+| `.env.example` | edit | Adds `POSTGRES_HOST=127.0.0.1` and `POSTGRES_PORT=5433` (no secrets; `.env` itself is never touched). |
+| `docs/setup-log.md` | edit | Records the verified commands and versions for block d (after it passes). |
+| `docs/ace/research_latest.md` | edit | Records the outcome of U17 to U19 (after they are run). |
+| `docs/ace/plan_latest.md` | edit | Ticks d in the status log (after it passes). |
+
+`compose.yaml` stays as it is: its port is already `127.0.0.1:5433:5432`. The earlier research note planned `scripts/migrate.py`; this plan uses `python -m agila.db migrate` (your instruction), one file less.
+
+### Verification commands (in order, from the project folder in PowerShell)
+1. `uv add "psycopg[binary]" pgvector`, then `uv run python -c "import psycopg, pgvector; print(psycopg.__version__)"` prints 3.3.x.
+2. `docker compose up -d`, then `docker compose ps` shows `db` healthy.
+3. `uv run ruff check .` passes.
+4. `uv run pytest` passes with the `db` tests deselected.
+5. `uv run --env-file .env pytest -m db -v` passes; afterwards `docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\l"'` shows no `agila_test` database.
+6. `uv run --env-file .env python -m agila.db migrate` reports 0001 applied; the same command again reports nothing to apply; `docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'` lists the five tables plus `schema_migrations`.
+7. `uv run --no-env-file python -m agila.db migrate` fails with a message naming the first missing variable and showing no value.
+8. U17, U18 and U19 each get one recorded result in research section 3. Then ruff and pytest again, and commit.
+Stop rule: any failing step stops the block; mark `d` as `[x] Failed (cause)` and add a lesson.
+
+### Questions for Eo
+1. Include the reserved values `cloud` (space kind) and `video` (source type) in the CHECK lists? Recommended yes: the PRD names them, and adding one later needs a new migration. Say no and I leave them out.
+2. `owner_id` as plain nullable text with no foreign key (users are backlog): OK?
+3. OK to make `identity_key` and `content_hash` NOT NULL? The PRD does not say; a null would let duplicates past the FR7 index.
+4. Confirm `uv run --env-file .env` instead of python-dotenv.
+
 ## Status log
 Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
 - [x] 1.1 Draft 3.3 saved; [x] 1.2 review triaged and accepted by Eo; [x] 1.3 acceptance sentences cover every in-scope FR (NFR15, NFR16 added); [x] 1.4 `CLAUDE.md` drafted (Eo to read and edit); [x] 1.5 commit 81ca19f; [x] 1.6 board decision
@@ -61,7 +111,8 @@ Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
 - [x] b (2026-10-17): U3 and U4 passed, results in research section 3 and setup-log.
 - [~] c (2026-10-17): think timing done for one question (U1, U2 partial); `/api/show` done (C1, 2026-10-19); `format` test done (C2, 2026-10-19, U11 passed, see setup-log); the 10-question run (C3) done 2026-10-19 (first run: 4b median 4.2 s, 9b 9.9 s, 9/10 each; lean 4b; see setup-log); run 2 (2026-10-19): 10/10 each, 4b median 4.5 s, 9b 13.1 s, so the run-1 misses were random and 4b is the recommended default. Remaining for Eo: confirm the model choice (D3) and tick c.
 - [x] C1 to C5 (2026-10-19 16:33): `/api/show`, `format` test, 10-question runs, keep_alive and `num_ctx`, decisions recorded (decisions.md, research U1/U2/U11, new U14 to U16). Block c itself stays `[~]` until Eo confirms D3. `scripts/ollama_spike.py` is temporary: delete once `llm.py` exists.
-- [ ] d, e, f, g, h, i, j, k, l, Gate 1
+- [x] d (2026-10-19): `0001_init.sql`, `db.py`, `tests/test_db.py` done; ruff and pytest pass, 7 db tests pass, migrate twice = no-op, U17 to U19 resolved. Ready to commit.
+- [ ] e, f, g, h, i, j, k, l, Gate 1
 - [ ] m, n, o, p, Gate 2
 - [ ] q, r, s, t, u, v, Gate 3, Day 15 tasks, w, x (optional)
 
