@@ -51,6 +51,22 @@ HTTP %{http_code}
   - `http://host.docker.internal:8765/index.txt` -> `hello-from-host` `HTTP 200`
 - Both reachable, including the server bound only to 127.0.0.1.
 
+## Day 2, results reported by Eo (blocks a and b, own run)
+These come from Eo's own run and sit beside the Claude Code run above; the numbers differ because the test data and server port were different.
+
+### Block a (Compose)
+- Docker Desktop engine was not running at first and was started.
+- Port 5432 is held by Eo's local Windows PostgreSQL, so the database is published on `127.0.0.1:5433`.
+- `docker compose ps` -> healthy.
+- Vector test returned 1. After `docker compose down` and `up -d` the count was 2.
+- pgvector extension version: 0.8.7.
+- `ollama --version` -> ollama version is 0.40.4.
+- `uv run ruff check .` -> All checks passed. `uv run pytest` -> 1 passed (Python 3.12.14, pytest 9.1.1, pluggy 1.7.0, `tests	est_smoke.py`).
+
+### Block b
+- A throwaway container reached Ollama 0.40.4 and a test server bound to `127.0.0.1` on port 8000 through `host.docker.internal`. (The Claude Code run used port 8765; see U3 above.)
+- n8n 2.43.6 ran with `TZ=Asia/Manila`; idle memory 361.7 MiB (Claude Code run: 369.2 MiB).
+
 ## Day 2 (2026-10-17), block c (part): think timing, 9b vs 4b (U1, U2)
 - Test: `POST http://127.0.0.1:11434/api/generate`, `stream=false`, 3 passages and the question "Is pgvector search exact or approximate without an index?", Ollama 0.40.4. `think` left out (default) or `false`. Each setting run twice; the table uses run 2 (model already loaded). Script: not committed (scratch file).
 - `ollama ps` default context 4096 for both models. 9b was sampled during the runs (steady); 4b was read right after the runs while still loaded, not during a request.
@@ -67,6 +83,3 @@ HTTP %{http_code}
 - Finding: all 8 answers say "exact", so no wrong answers on this question. Answer style varies (9b run 2 began with "Exact." on its own line).
 - Finding: `ollama ps` shows a GPU share (27% and 48%) even though the notes say CPU only. Not investigated; record only.
 - Not done yet in block c: `/api/show` thinking values, `format` JSON schema test (U11), the 10-question run.
-
-## Other
-- `uv --version` -> uv 0.12.17 (line carried over from the earlier `docs/setup-logs.md`, which can be deleted).
