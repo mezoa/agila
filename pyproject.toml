@@ -7,7 +7,10 @@ authors = [
     { name = "Meo", email = "ameoangelo@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pgvector>=0.5.1",
+    "psycopg[binary]>=3.3.6",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.17,<0.13.0"]
@@ -28,3 +31,5 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not db'"
+markers = ["db: needs the Postgres container and a .env (run with -m db)"]
