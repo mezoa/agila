@@ -130,3 +130,12 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Missing variable: `uv run --no-env-file python -m agila.db migrate` -> `migrate failed: Missing environment variable POSTGRES_HOST` (no value shown)
 - Gotchas: plain `uv run` does not read `.env` (use `--env-file .env`); `register_vector` fails before the `vector` extension exists, so `migrate` connects with `register=False`
 - `.env.example` now has POSTGRES_HOST=127.0.0.1 and POSTGRES_PORT=5433
+
+## Day 4 (2026-10-20), block e part 2: embed and save text and Markdown
+- `embed.py` imports `numpy` directly, so it is now an explicit dependency: `uv add "numpy>=2.5.4"` (2.5.4 was already installed through fastembed 0.9.0; the installed version did not change)
+- Fast tests: `uv run pytest` -> 33 passed, 20 deselected. Database tests: `uv run --env-file .env pytest -m db -q` -> 20 passed (throwaway `agila_test`, gone afterwards: `\l`-style check listed only `postgres`, `agila`, `template0`, `template1`)
+- Temporary command line (assumed, replaced by the CLI in block j): `uv run --env-file .env python -m agila.ingest markdown PATH [--title T] [--label L]` and `uv run --env-file .env python -m agila.ingest text --title T --label L [--file PATH]` (stdin if no `--file`). Prints `Saved <name>: N chunks` or one sentence
+- Saving the same source type + label twice prints `Already saved: <label>. Replacing a saved item comes later (block g).` and writes nothing
+- Not yet run by hand on the real `agila` database (plan verification 4, Eo's call: there is no delete command until block g)
+- Deleted the spike scripts `scripts/embed_spike.py` and `scripts/token_count_spike.py`
+- Hand check on the real `agila` database (Eo ran it): `uv run --env-file .env python -m agila.ingest --help` lists `text` and `markdown`; saving a 3-section Markdown file printed `Saved agila-day4.md: 3 chunks`, and the same command again printed `Already saved: agila-day4.md. Replacing a saved item comes later (block g).` That test document is still in the real database

@@ -4,8 +4,6 @@ from pgvector import Vector
 
 from agila import db
 
-TEST_DB = "agila_test"
-
 
 def test_missing_variable_names_it_but_not_the_password(monkeypatch):
     for name in db.ENV_VARS:
@@ -16,32 +14,6 @@ def test_missing_variable_names_it_but_not_the_password(monkeypatch):
         db.connect()
     assert "POSTGRES_HOST" in str(err.value)
     assert "secret-value-123" not in str(err.value)
-
-
-def _recreate_test_database():
-    assert TEST_DB == "agila_test"  # never drop anything else
-    with db.connect(dbname="postgres", register=False) as admin:
-        admin.autocommit = True
-        admin.execute(f"DROP DATABASE IF EXISTS {TEST_DB} WITH (FORCE)")
-        admin.execute(f"CREATE DATABASE {TEST_DB}")
-
-
-@pytest.fixture
-def empty_db():
-    """Name of a fresh, empty database; dropped afterwards. Never touches `agila`."""
-    _recreate_test_database()
-    yield TEST_DB
-    with db.connect(dbname="postgres", register=False) as admin:
-        admin.autocommit = True
-        admin.execute(f"DROP DATABASE IF EXISTS {TEST_DB} WITH (FORCE)")
-
-
-@pytest.fixture
-def conn(empty_db):
-    with db.connect(dbname=empty_db, register=False) as plain:
-        db.migrate(plain)
-    with db.connect(dbname=empty_db) as migrated:
-        yield migrated
 
 
 def _insert_document(conn, identity_key="doc-1", status="active"):
