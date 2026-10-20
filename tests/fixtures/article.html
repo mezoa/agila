@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>How Agila Saves a Page</title>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/blog">Blog</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </header>
+  <main>
+    <article>
+      <h1>How Agila Saves a Page</h1>
+      <p>Agila is a small assistant that keeps the pages you save on your own laptop. It never sends the text to a hosted service.</p>
+      <p>When you save a link, Agila downloads the page and keeps only the main text. Menus, banners and footers are left out, so they never show up in an answer.</p>
+      <h2>Why the text is split</h2>
+      <p>The text is cut into short chunks of about three hundred tokens. Each chunk keeps the heading it came from, which helps a later search find the right part of the page.</p>
+      <p>Every chunk becomes a list of 384 numbers. Two chunks that talk about the same idea get numbers that are close to each other.</p>
+      <h2>Why it can say no</h2>
+      <p>A question is turned into numbers in the same way, and the closest chunks are used to write the answer. If nothing is close enough, Agila says that it does not know.</p>
+    </article>
+  </main>
+  <footer>
+    <p>Copyright 2026 Example Blog. All rights reserved.</p>
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
+  </footer>
+</body>
+</html>

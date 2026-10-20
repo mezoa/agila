@@ -139,3 +139,10 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Not yet run by hand on the real `agila` database (plan verification 4, Eo's call: there is no delete command until block g)
 - Deleted the spike scripts `scripts/embed_spike.py` and `scripts/token_count_spike.py`
 - Hand check on the real `agila` database (Eo ran it): `uv run --env-file .env python -m agila.ingest --help` lists `text` and `markdown`; saving a 3-section Markdown file printed `Saved agila-day4.md: 3 chunks`, and the same command again printed `Already saved: agila-day4.md. Replacing a saved item comes later (block g).` That test document is still in the real database
+
+## Day 4 (2026-10-20), block f part 1: save a URL (library only)
+- Installed: `uv add "httpx>=0.28.1" "trafilatura>=2.3.1"` -> httpx 0.28.1 (declared; it was only transitive before) and trafilatura 2.3.1 with 13 more packages (courlan, htmldate, justext, lxml, lxml-html-clean, dateparser, babel, python-dateutil, pytz, regex, six, tld, tzlocal). Python 3.12.14
+- Fast tests: `uv run pytest` -> 107 passed, 30 deselected. Database tests: `uv run --env-file .env pytest -m db -q` -> 30 passed (throwaway `agila_test`)
+- Offline check: the plain suite was also run with every non-loopback `socket.connect` blocked (a guard set from `python -c` before `pytest.main`): 107 passed; the only connections were to `127.0.0.1`
+- No command line for URLs yet (Day 5): `save_url` exists only in `library.py` and the tests; there is no private-address block, size cap or content-type check yet, so do not point it at real links before Day 5
+- Fixtures: `tests/fixtures/article.html`, `menus.html`, `empty.html` (small, made up, readable in any editor)

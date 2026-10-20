@@ -1,16 +1,20 @@
 import hashlib
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from agila import library
 from agila.chunking import CACHE_DIR, default_counter, embedded_text
-from agila.library import SaveError, save_markdown, save_text
+from agila.library import SaveError, save_markdown, save_text, save_url
+from agila.web import FetchError
 
 pytestmark = [
     pytest.mark.db,
     pytest.mark.skipif(not CACHE_DIR.exists(), reason="model not cached in .cache/fastembed"),
 ]
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 THREE_HEADINGS = """# Notes
 
@@ -158,3 +162,98 @@ def test_same_identity_twice_gives_already_saved_and_one_document(conn):
         save_text(conn, "T", "same", "Changed version.", FakeEmbedder())
     assert _count(conn, "documents") == 1
     assert _count(conn, "chunks") == 1
+
+
+# --- save_url (block f part 1): the fetch is always a fake, no network ---
+
+
+def _page(name):
+    return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+class FakeFetcher:
+    def __init__(self, html=None, error=None):
+        self.html, self.error, self.calls = html, error, []
+
+    def __call__(self, url):
+        self.calls.append(url)
+        if self.error:
+            raise self.error
+        return self.html
+
+
+def test_save_url_stores_a_web_document_with_its_urls(conn):
+    url = "HTTPS://Example.test/Post/1/?utm_source=x&id=7#top"
+    fetcher = FakeFetcher(_page("article.html"))
+    saved = save_url(conn, url, fetcher=fetcher, embedder=FakeEmbedder())
+    row = conn.execute(
+        "SELECT title, source_type, source_url, normalized_url, identity_key, source_label,"
+        " status FROM documents WHERE id = %s",
+        (saved.document_id,),
+    ).fetchone()
+    normalized = "https://example.test/Post/1?id=7"
+    assert row == (
+        "How Agila Saves a Page", "web", url, normalized, normalized, normalized, "active"
+    )
+    assert fetcher.calls == [url]  # downloaded as given, not the normalized form
+    texts = [r[0] for r in conn.execute("SELECT text FROM chunks")]
+    assert any("Agila is a small assistant" in t for t in texts)
+    for menu_text in ("Blog", "Contact", "Privacy", "Copyright"):
+        assert not any(menu_text in t for t in texts)
+    assert saved.chunk_count == len(texts) >= 1
+
+
+def test_save_url_title_argument_wins_and_url_is_the_last_fallback(conn):
+    fetcher = FakeFetcher(_page("article.html"))
+    given = save_url(conn, "https://a.test/x", title=" My title ", fetcher=fetcher,
+                     embedder=FakeEmbedder())
+    no_title = "<html><body><p>" + "This is a plain sentence with several words in it. " * 6
+    untitled = save_url(conn, "https://b.test/y/", fetcher=FakeFetcher(no_title),
+                        embedder=FakeEmbedder())
+    titles = dict(conn.execute("SELECT id, title FROM documents").fetchall())
+    assert titles[given.document_id] == "My title"
+    assert titles[untitled.document_id] == "https://b.test/y"  # the normalized URL
+
+
+@pytest.mark.parametrize(
+    ("fixture", "message"),
+    [("menus.html", "under 200 characters"), ("empty.html", "No readable text")],
+)
+def test_thin_pages_are_rejected_and_store_nothing(conn, fixture, message):
+    with pytest.raises(SaveError, match=message):
+        save_url(conn, "https://shop.test/", fetcher=FakeFetcher(_page(fixture)),
+                 embedder=FakeEmbedder())
+    assert _count(conn, "documents") == 0
+    assert _count(conn, "chunks") == 0
+
+
+BAD_URLS = ["htp://example.test/a", "example.test/a", "ftp://example.test/a", ""]
+
+
+@pytest.mark.parametrize("url", BAD_URLS)
+def test_a_typo_url_is_refused_before_any_download(conn, url):
+    fetcher = FakeFetcher(_page("article.html"))
+    with pytest.raises(SaveError):
+        save_url(conn, url, fetcher=fetcher, embedder=FakeEmbedder())
+    assert fetcher.calls == []
+    assert _count(conn, "documents") == 0
+
+
+def test_a_failed_download_stores_nothing_and_keeps_its_sentence(conn):
+    fetcher = FakeFetcher(error=FetchError("The page answered with status 404."))
+    with pytest.raises(SaveError, match="status 404"):
+        save_url(conn, "https://example.test/gone", fetcher=fetcher, embedder=FakeEmbedder())
+    assert _count(conn, "documents") == 0
+
+
+def test_same_url_with_other_tracking_parameters_is_already_saved(conn):
+    fetcher = FakeFetcher(_page("article.html"))
+    save_url(conn, "https://example.test/post", fetcher=fetcher, embedder=FakeEmbedder())
+    with pytest.raises(SaveError, match="Already saved: https://example.test/post"):
+        save_url(
+            conn,
+            "HTTPS://Example.test/post/?utm_source=mail&fbclid=abc#comments",
+            fetcher=fetcher,
+            embedder=FakeEmbedder(),
+        )
+    assert _count(conn, "documents") == 1

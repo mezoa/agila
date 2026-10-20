@@ -1,7 +1,8 @@
-"""Save pasted text or Markdown as one document with chunks and vectors (FR1, FR4, FR8)."""
+"""Save pasted text, Markdown or a web page as one document with chunks and vectors."""
 
 import hashlib
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from psycopg import errors
 
 from agila.chunking import FRONT_MATTER, chunk_document
 from agila.embed import Embedder, embed_chunks
+from agila.urls import UrlError, normalize_url
+from agila.web import WebError, extract_page, fetch_html
 
 ACTIVE_IDENTITY_INDEX = "documents_active_identity"
 H1 = re.compile(r"^#[ \t]+(.*\S)[ \t]*$")
@@ -59,6 +62,40 @@ def save_markdown(
     return _save(conn, title, label, "markdown", text, True, embedder)
 
 
+def save_url(
+    conn: psycopg.Connection,
+    url: str,
+    title: str | None = None,
+    fetcher: Callable[[str], str] = fetch_html,
+    embedder: Embedder | None = None,
+) -> Saved:
+    """FR2 (part 1): check the link, download it, keep the main text, save it like any document.
+
+    Title: `title` if given, else the page's own title, else the normalized URL. Nothing is stored
+    when any step fails. Day 5 adds the private-address block, redirects, the size cap and the
+    content-type check, so no command line calls this yet. `fetcher` is a parameter so tests can
+    pass a fake.
+    """
+    try:
+        normalized = normalize_url(url)  # also refuses anything that is not http or https
+        page_title, text = extract_page(fetcher(url.strip()))
+    except (UrlError, WebError) as exc:
+        raise SaveError(str(exc)) from exc
+    title = (title or "").strip() or page_title or normalized
+    return _save(
+        conn,
+        title,
+        normalized,
+        "web",
+        text,
+        False,
+        embedder,
+        identity_key=normalized,
+        source_url=url.strip(),
+        normalized_url=normalized,
+    )
+
+
 def _first_heading(markdown: str) -> str | None:
     in_fence = False
     for line in FRONT_MATTER.sub("", markdown.replace("\r\n", "\n"), count=1).split("\n"):
@@ -78,10 +115,16 @@ def _save(
     text: str,
     is_markdown: bool,
     embedder: Embedder | None,
+    *,
+    identity_key: str | None = None,
+    source_url: str | None = None,
+    normalized_url: str | None = None,
 ) -> Saved:
     """Chunk and embed first (no database yet), then write everything in ONE transaction.
 
     `conn` must be idle (no open transaction), so the block below really commits at its end.
+    The identity key defaults to source type + label (text, Markdown); web pages pass the
+    normalized URL (PRD FR7).
     """
     text = text.replace("\r\n", "\n")
     try:
@@ -92,7 +135,7 @@ def _save(
     except ValueError as exc:
         raise SaveError(f"Could not prepare {label}: {exc}") from exc
 
-    identity_key = f"{source_type}:{label}"
+    identity_key = identity_key or f"{source_type}:{label}"
     content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     try:
         with conn.transaction():
@@ -100,9 +143,19 @@ def _save(
             if row is None:
                 raise SaveError("No default space; run the migrate command first.")
             document_id = conn.execute(
-                "INSERT INTO documents (space_id, title, source_label, source_type,"
-                " identity_key, content_hash) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
-                (row[0], title, label, source_type, identity_key, content_hash),
+                "INSERT INTO documents (space_id, title, source_label, source_url,"
+                " normalized_url, source_type, identity_key, content_hash)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                (
+                    row[0],
+                    title,
+                    label,
+                    source_url,
+                    normalized_url,
+                    source_type,
+                    identity_key,
+                    content_hash,
+                ),
             ).fetchone()[0]
             with conn.cursor() as cur:
                 cur.executemany(
