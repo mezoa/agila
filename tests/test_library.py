@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from agila import library
-from agila.chunking import CACHE_DIR, default_counter, embedded_text
+from agila.chunking import CACHE_DIR, Chunk, default_counter, embedded_text
 from agila.library import SaveError, save_markdown, save_text, save_url
 from agila.web import FetchError
 
@@ -217,7 +217,11 @@ def test_save_url_title_argument_wins_and_url_is_the_last_fallback(conn):
 
 @pytest.mark.parametrize(
     ("fixture", "message"),
-    [("menus.html", "under 200 characters"), ("empty.html", "No readable text")],
+    [
+        ("menus.html", "under 200 characters"),
+        ("empty.html", "No readable text"),
+        ("login_wall.html", "under 200 characters"),
+    ],
 )
 def test_thin_pages_are_rejected_and_store_nothing(conn, fixture, message):
     with pytest.raises(SaveError, match=message):
@@ -257,3 +261,45 @@ def test_same_url_with_other_tracking_parameters_is_already_saved(conn):
             embedder=FakeEmbedder(),
         )
     assert _count(conn, "documents") == 1
+
+
+# --- the 200-chunk cap (FR2, web pages only; block f part 2) ---
+
+
+def _fake_chunks(count):
+    chunks = [Chunk(i, "", f"Chunk number {i}.") for i in range(count)]
+    return lambda title, text, is_markdown: chunks
+
+
+class CountingEmbedder(FakeEmbedder):
+    def __init__(self):
+        self.texts = 0
+
+    def passage_embed(self, texts):
+        self.texts += len(texts)
+        return super().passage_embed(texts)
+
+
+def test_a_page_needing_more_than_200_chunks_is_refused_before_embedding(conn, monkeypatch):
+    monkeypatch.setattr(library, "chunk_document", _fake_chunks(201))
+    embedder = CountingEmbedder()
+    with pytest.raises(SaveError, match="more than 200 chunks"):
+        save_url(conn, "https://long.test/", fetcher=FakeFetcher(_page("article.html")),
+                 embedder=embedder)
+    assert embedder.texts == 0  # refused before the slow step
+    assert _count(conn, "documents") == 0
+    assert _count(conn, "chunks") == 0
+
+
+def test_a_page_of_exactly_200_chunks_is_saved(conn, monkeypatch):
+    monkeypatch.setattr(library, "chunk_document", _fake_chunks(200))
+    saved = save_url(conn, "https://long.test/", fetcher=FakeFetcher(_page("article.html")),
+                     embedder=FakeEmbedder())
+    assert saved.chunk_count == 200
+    assert _count(conn, "chunks") == 200
+
+
+def test_the_chunk_cap_does_not_apply_to_pasted_text(conn, monkeypatch):
+    monkeypatch.setattr(library, "chunk_document", _fake_chunks(201))
+    saved = save_text(conn, "Long note", "long.txt", "words " * 10, embedder=FakeEmbedder())
+    assert saved.chunk_count == 201

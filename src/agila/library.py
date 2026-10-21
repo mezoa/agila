@@ -15,6 +15,7 @@ from agila.urls import UrlError, normalize_url
 from agila.web import WebError, extract_page, fetch_html
 
 ACTIVE_IDENTITY_INDEX = "documents_active_identity"
+MAX_WEB_CHUNKS = 200  # FR2 [assumed]: web pages needing more are refused (text and Markdown not)
 H1 = re.compile(r"^#[ \t]+(.*\S)[ \t]*$")
 
 
@@ -26,6 +27,7 @@ class SaveError(Exception):
 class Saved:
     document_id: int
     chunk_count: int
+    title: str
 
 
 def save_text(
@@ -69,12 +71,12 @@ def save_url(
     fetcher: Callable[[str], str] = fetch_html,
     embedder: Embedder | None = None,
 ) -> Saved:
-    """FR2 (part 1): check the link, download it, keep the main text, save it like any document.
+    """FR2: check the link, download it, keep the main text, save it like any document.
 
     Title: `title` if given, else the page's own title, else the normalized URL. Nothing is stored
-    when any step fails. Day 5 adds the private-address block, redirects, the size cap and the
-    content-type check, so no command line calls this yet. `fetcher` is a parameter so tests can
-    pass a fake.
+    when any step fails, including a page that needs more than MAX_WEB_CHUNKS chunks. The address
+    block, redirects, size cap and content-type check live in `fetch_html`. `fetcher` is a
+    parameter so tests can pass a fake.
     """
     try:
         normalized = normalize_url(url)  # also refuses anything that is not http or https
@@ -93,6 +95,7 @@ def save_url(
         identity_key=normalized,
         source_url=url.strip(),
         normalized_url=normalized,
+        max_chunks=MAX_WEB_CHUNKS,
     )
 
 
@@ -119,6 +122,7 @@ def _save(
     identity_key: str | None = None,
     source_url: str | None = None,
     normalized_url: str | None = None,
+    max_chunks: int | None = None,
 ) -> Saved:
     """Chunk and embed first (no database yet), then write everything in ONE transaction.
 
@@ -131,6 +135,8 @@ def _save(
         chunks = chunk_document(title, text, is_markdown)
         if not chunks:
             raise SaveError(f"Nothing to save: no text found in {label}.")
+        if max_chunks is not None and len(chunks) > max_chunks:  # before the slow embedding
+            raise SaveError(f"The page is too long: it would need more than {max_chunks} chunks.")
         vectors = embed_chunks(title, chunks, embedder)
     except ValueError as exc:
         raise SaveError(f"Could not prepare {label}: {exc}") from exc
@@ -176,4 +182,4 @@ def _save(
         raise SaveError(
             f"Saving {label} failed ({type(exc).__name__}); nothing was saved."
         ) from exc
-    return Saved(document_id, len(chunks))
+    return Saved(document_id, len(chunks), title)

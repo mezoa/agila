@@ -1,12 +1,12 @@
-# Deviations from PRD Draft 3.3 (as of 2026-10-20, end of Day 4)
+# Deviations from PRD Draft 3.3 (as of 2026-10-21, Day 5, block f part 2 built)
 
 Kinds: **Temporary** (matches the PRD later), **Gap filled** (PRD silent or marked assumed), **Refinement** (a choice inside what the PRD allows), **Conflict** (needs a decision), **Schedule**.
 "Amended" = already written into `PRD-draft-3.3-amended.md`.
 
 | # | Topic | PRD says | What we did | Kind | Resolves | Recorded in |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Redirects | FR2: at most 5 redirects, private-address check after each | A redirect is refused with "redirects are not supported yet" | Temporary | Day 5 | decisions.md "Redirects" |
-| 2 | Other FR2 safety limits | Private/localhost block, 5 MB cap, HTML or text only, 200 chunks per document | Not built yet; no command line fetches URLs yet | Temporary | Day 5 | plan_latest.md f, step 9 |
+| 1 | Redirects | FR2: at most 5 redirects, private-address check after each | **Resolved 2026-10-21.** Redirects are followed by hand, at most 5 (the 6th is refused), with a scheme and address check on every hop and loop detection. Was: refused with "redirects are not supported yet" | Temporary, resolved | Done 2026-10-21 | decisions.md "Redirects" |
+| 2 | Other FR2 safety limits | Private/localhost block, 5 MB cap, HTML or text only, 200 chunks per document | **Resolved 2026-10-21.** Address block, 5 MiB cap, HTML/XHTML/plain text only, 200-chunk cap (URL saves only) and `ingest url` are built; see rows 18 to 21 for the choices inside them. Was: not built, no command line fetched URLs | Temporary, resolved | Done 2026-10-21 | decisions.md "Download safety", "Download limits" |
 | 3 | Duplicate save | FR7: same label with different content is stored with a warning; identical content says "already saved, unchanged" | Any second active save with the same identity gives a plain "Already saved" error | Temporary | Block g | plan_latest.md Q1 |
 | 4 | Same label, two notes | FR7: both notes exist | The unique index `documents_active_identity` allows one active document per identity key, so the second cannot be inserted | Conflict (amended as OPEN CONFLICT) | Block g, first | plan_latest.md g |
 | 5 | Command line | FR25: save, ask, search, list, archive, unarchive, delete, evaluate | A temporary `python -m agila.ingest text|markdown` only | Temporary | Block j | plan_latest.md e part 2 |
@@ -21,6 +21,11 @@ Kinds: **Temporary** (matches the PRD later), **Gap filled** (PRD silent or mark
 | 14 | Markdown defaults | Silent | Title = first `#` heading, else the file name; label = the file name with extension | Gap filled | n/a | plan_latest.md Q3 |
 | 15 | Web identity and hash | FR7: normalized URL as the identity key | `identity_key` and `source_label` = normalized URL; `content_hash` = SHA-256 of the extracted text, not the HTML | Gap filled | n/a | decisions.md "URL fields on a web document" |
 | 16 | Dependencies | Lists `trafilatura` only | Also `httpx` declared explicitly | Refinement | n/a | setup-log.md |
-| 17 | Schedule | Block e 4.5 h (Days 3 to 4); f 3.0 h (Days 4 to 5); g 2.5 h (Day 5) | e done on Day 4; f is half done, so Day 5 carries the rest of f plus g | Schedule | Watch the Day 5 hours | plan_latest.md |
+| 17 | Schedule | Block e 4.5 h (Days 3 to 4); f 3.0 h (Days 4 to 5); g 2.5 h (Day 5) | e done on Day 4; f was half done, so Day 5 was to carry the rest of f plus g. **Changed by Eo on 2026-10-21: block g moves to Day 6.** Day 5 is used for the rest of block f (safe download, redirects, size limits, `ingest url`, test network guard), about 4.25 h by my estimate. Tier 1 slack (6.0 h) absorbs it; the Gate 1 date is unchanged for now | Schedule | Re-check the Day 9 gate after Day 6 | plan_latest.md "Block f part 2 plan" |
+| 18 | Address check is check-then-connect | FR2: block localhost, private and link-local addresses, checked again after every redirect | Every hop is checked with the system name lookup before it is requested, but the connection is NOT pinned to the checked address. Open on purpose: DNS rebinding (a name that changes its answer between our check and the connection), a public server that forwards to the home LAN, and reuse of a kept-open connection. We do not replace httpx's private `transport._pool`; the "connect to the vetted address" idea was dropped | Refinement, accepted risk | **Revisit before block o** (Discord bot lets someone other than Eo save links) | decisions.md "Download safety", research V41 to V47, U25, U28 |
+| 19 | Content type | FR2: HTML or plain text only | `text/html`, `application/xhtml+xml`, `text/plain`; a response with no `Content-Type` is refused (Eo, Q5) | Gap filled | n/a | decisions.md "Download limits" |
+| 20 | Compressed pages | FR2: download at most 5 MB [assumed] | `Accept-Encoding: identity` is sent and any compressed answer is refused; the 5 MB limit is 5 MiB of bytes read raw | Gap filled | Revisit if the 5-link sample shows many compressed-only sites | decisions.md "Download limits", research V45, U27 |
+| 21 | Chunk cap | FR2: at most 200 chunks per document [assumed] | Applied to URL saves only, checked before embedding; pasted text and Markdown are not limited (Eo, Q6) | Gap filled | n/a | decisions.md "Download limits" |
+| 22 | Test network guard | NFR/CLAUDE.md: no network in unit tests | An autouse fixture makes any test that leaves loopback or looks up a real name fail; scratch scripts follow the same rule | Refinement | n/a | decisions.md "Test network guard", research V48, U29 |
 
-Housekeeping: the first line of `docs/decisions.md` still says "PRD Draft 3.2 is the authority"; `CLAUDE.md` and the PRD say Draft 3.3.
+Housekeeping: the first line of `docs/decisions.md` said "PRD Draft 3.2 is the authority"; it now says Draft 3.3 (fixed 2026-10-21).

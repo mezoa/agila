@@ -146,3 +146,12 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Offline check: the plain suite was also run with every non-loopback `socket.connect` blocked (a guard set from `python -c` before `pytest.main`): 107 passed; the only connections were to `127.0.0.1`
 - No command line for URLs yet (Day 5): `save_url` exists only in `library.py` and the tests; there is no private-address block, size cap or content-type check yet, so do not point it at real links before Day 5
 - Fixtures: `tests/fixtures/article.html`, `menus.html`, `empty.html` (small, made up, readable in any editor)
+
+## Day 5 (2026-10-21), block f part 2: safe download, redirects, size limits, `ingest url`
+- No new packages. New files: `src/agila/netcheck.py`, `tests/test_netcheck.py`, `tests/test_netguard.py`, `tests/fixtures/login_wall.html`; changed: `web.py`, `library.py` (200-chunk cap, `Saved.title`), `ingest.py` (`url` command), `tests/conftest.py` (network guard), `test_web.py`, `test_library.py`, `test_ingest.py`
+- Fast tests: `uv run pytest` -> 231 passed, 34 deselected. Database tests: `uv run --env-file .env pytest -m db -q` -> 34 passed (throwaway `agila_test`, gone afterwards: `psql ... select datname from pg_database` lists postgres, agila, template0, template1). `uv run ruff check .` clean
+- Every test runs under the network guard in `tests/conftest.py`: any connection outside loopback or lookup of a real name fails the test. Guard self-tests: `uv run pytest tests/test_netguard.py -v` -> 7 passed
+- New temporary command (replaced by the CLI in block j): `uv run --env-file .env python -m agila.ingest url URL [--title T]`
+- Hand checks that touch no outside network (the refusal happens before any request): `... ingest url http://localhost:8000` and `... ingest url http://169.254.169.254/` each print `The address <host> is private, local or reserved, so it is not fetched.`; `... ingest url htp://example.test` prints `Only http and https links can be saved, and htp://example.test is neither.`; each exits with code 1 and `documents` stays at 0 rows
+- Not run: `pytest` with the network switched off (the guard makes any outside connection a test failure, which is stricter); the 5 real links (Eo, report only)
+- Gotcha: a `ruff format` over the whole tree reformats files that were never formatted that way; format only new files

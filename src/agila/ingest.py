@@ -1,7 +1,8 @@
-"""Temporary command line for the two saves (assumed, until the real CLI in block j).
+"""Temporary command line for the saves (assumed, until the real CLI in block j).
 
     uv run --env-file .env python -m agila.ingest text --title T --label L [--file PATH]
     uv run --env-file .env python -m agila.ingest markdown PATH [--title T] [--label L]
+    uv run --env-file .env python -m agila.ingest url URL [--title T]
 """
 
 import argparse
@@ -12,7 +13,7 @@ from pathlib import Path
 import psycopg
 
 from agila import db
-from agila.library import SaveError, save_markdown, save_text
+from agila.library import SaveError, save_markdown, save_text, save_url
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -26,6 +27,9 @@ def _parser() -> argparse.ArgumentParser:
     markdown.add_argument("path", type=Path)
     markdown.add_argument("--title")
     markdown.add_argument("--label", help="source label (default: the file name)")
+    url = sub.add_parser("url", help="save a web page (public http or https links only)")
+    url.add_argument("url")
+    url.add_argument("--title", help="title (default: the page title, else the link)")
     return parser
 
 
@@ -42,6 +46,9 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
             if args.command == "text":
                 saved = save_text(conn, args.title, args.label, text)
                 name = args.title
+            elif args.command == "url":
+                saved = save_url(conn, args.url, args.title)
+                name = saved.title
             else:
                 saved = save_markdown(conn, args.path, args.title, args.label)
                 name = args.title or args.path.name
