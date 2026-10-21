@@ -1,4 +1,4 @@
-# Agila decisions (updated 2026-10-15; PRD Draft 3.2 is the authority)
+# Agila decisions (updated 2026-10-15; PRD Draft 3.3 is the authority)
 
 | Need | Choice | Why | Catch / status |
 | --- | --- | --- | --- |
