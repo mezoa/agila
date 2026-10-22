@@ -161,3 +161,9 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Fast tests: `uv run pytest` -> 240 passed, 52 deselected. Database tests: `uv run --env-file .env pytest -m db -q` -> 52 passed (throwaway `agila_test` only, which migrates 0001 then 0002 itself; afterwards the server listed only `postgres`, `agila`, `template1`, `template0`)
 - New temporary commands (replaced by the CLI in block j): `uv run --env-file .env python -m agila.ingest list`, `... archive ID`, `... unarchive ID`, `... delete ID` (dry run) and `... delete ID --yes`; `--replace` on `text`, `markdown` and `url`
 - Not yet run (Eo, real `agila` database): `uv run --env-file .env python -m agila.db migrate` (expected `applied: 0002_identity_index_web_only.sql`, then `nothing to apply` on a second run) and the hand checks of plan block g, verification 4. Until 0002 is applied, a second text note with an existing label is refused with "The database needs an update: run uv run --env-file .env python -m agila.db migrate"
+
+## Day 6 (2026-10-22), block h: search the saved passages
+- No new packages. New files: `src/agila/retrieval.py`, `tests/test_retrieval.py`; changed: `embed.py` (`embed_question`), `ingest.py` (`search`), `tests/test_embed.py`, `tests/test_ingest.py`
+- Fast tests: `uv run pytest` -> 260 passed, 66 deselected. Database tests: `uv run --env-file .env pytest -m db -q` -> 66 passed (throwaway `agila_test` only)
+- New temporary command (replaced by the CLI in block j): `uv run --env-file .env python -m agila.ingest search "QUESTION" [--min-similarity X]`; the default threshold is the PROVISIONAL 0.70; the first search in a new process loads the model (about 1.2 s, V57)
+- Not yet run (Eo, real library, read-only): the two hand searches of plan block h, verification 3

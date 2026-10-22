@@ -7,6 +7,7 @@
     uv run --env-file .env python -m agila.ingest archive ID
     uv run --env-file .env python -m agila.ingest unarchive ID
     uv run --env-file .env python -m agila.ingest delete ID [--yes]
+    uv run --env-file .env python -m agila.ingest search "QUESTION" [--min-similarity X]
 """
 
 import argparse
@@ -31,8 +32,20 @@ from agila.library import (
     save_url,
     unarchive,
 )
+from agila.retrieval import PROVISIONAL_MIN_SIMILARITY, search
 
 MAX_ID = 2**63 - 1  # documents.id is a bigint
+SHOWN_CHARACTERS = 300
+
+
+def _similarity(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        value = float("nan")
+    if not -1.0 <= value <= 1.0:  # also false for nan
+        raise argparse.ArgumentTypeError(f"{text!r} is not a similarity between -1 and 1")
+    return value
 
 
 def _document_id(text: str) -> int:
@@ -60,6 +73,14 @@ def _parser() -> argparse.ArgumentParser:
     url.add_argument("--title", help="title (default: the page title, else the link)")
     url.add_argument("--replace", action="store_true", help=replace_help)
     sub.add_parser("list", help="list documents with id, date, status, visibility and title")
+    find = sub.add_parser("search", help="show up to 3 saved passages close to a question")
+    find.add_argument("question")
+    find.add_argument(
+        "--min-similarity",
+        type=_similarity,
+        default=PROVISIONAL_MIN_SIMILARITY,
+        help=f"for this search only (default: provisional {PROVISIONAL_MIN_SIMILARITY})",
+    )
     for name, what in (("archive", "archive"), ("unarchive", "un-archive")):
         command = sub.add_parser(name, help=f"{what} one document")
         command.add_argument("id", type=_document_id)
@@ -97,7 +118,31 @@ def _delete(conn: psycopg.Connection, document_id: int, yes: bool) -> list[str]:
     ]
 
 
+def _search(conn: psycopg.Connection, question: str, min_similarity: float) -> list[str]:
+    result = search(conn, question, min_similarity=min_similarity)
+    if result.best_similarity is None:
+        return ["No documents saved yet."]
+    which = "provisional threshold" if min_similarity == PROVISIONAL_MIN_SIMILARITY else "threshold"
+    if not result.passages:
+        return [
+            f"Nothing close enough: the best similarity was {result.best_similarity:.2f},"
+            f" below the {which} {min_similarity:.2f}."
+        ]
+    lines = []
+    for number, p in enumerate(result.passages, 1):
+        saved = _date(p.saved_at)
+        lines.append(f"{number}. {p.similarity:.2f}  {p.title}  ({p.source}, saved {saved})")
+        if p.heading:
+            lines.append(f"   Section: {p.heading}")
+        text = " ".join(p.text.split())
+        more = "..." if len(text) > SHOWN_CHARACTERS else ""
+        lines.append("   " + text[:SHOWN_CHARACTERS] + more)
+    return lines
+
+
 def _manage(conn: psycopg.Connection, args: argparse.Namespace) -> list[str]:
+    if args.command == "search":
+        return _search(conn, args.question, args.min_similarity)
     if args.command == "list":
         return _list(conn)
     if args.command == "archive":
@@ -117,7 +162,7 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
                 raise SaveError(f"File not found: {args.file}")
             text = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
         with connect() as conn:
-            if args.command in ("list", "archive", "unarchive", "delete"):
+            if args.command in ("list", "archive", "unarchive", "delete", "search"):
                 lines = _manage(conn, args)
             else:
                 if args.command == "text":
@@ -143,6 +188,9 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
         return 1
     except (OSError, UnicodeDecodeError):
         print("Could not read the text as UTF-8. Check the file and try again.")
+        return 1
+    except ValueError as exc:  # after UnicodeDecodeError, a subclass: a blank search question
+        print(exc)
         return 1
     print("\n".join(lines))
     return 0

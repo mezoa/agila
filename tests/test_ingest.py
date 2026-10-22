@@ -1,11 +1,11 @@
 import contextlib
 import io
-from datetime import datetime
+from datetime import UTC, datetime
 
 import numpy as np
 import pytest
 
-from agila import db, ingest, library, netcheck
+from agila import db, ingest, library, netcheck, retrieval
 from agila.chunking import CACHE_DIR
 
 
@@ -203,3 +203,81 @@ def test_a_label_warning_is_printed_on_its_own_line(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO("Some text."))
     assert ingest.main(["text", "--title", "T", "--label", "L"], connect=_no_database) == 0
     assert capsys.readouterr().out == f"Saved T: 1 chunks\n{warning}\n"
+
+
+# --- block h: ingest search (search faked: no database, no model) ---
+
+
+def _result(passages, best=None, threshold=retrieval.PROVISIONAL_MIN_SIMILARITY):
+    best = passages[0].similarity if passages and best is None else best
+    return retrieval.SearchResult(passages, best, threshold)
+
+
+def _passage(similarity, heading=None, text="Short passage text."):
+    return retrieval.Passage(
+        11, text, heading, None, "llm-wiki", "https://example.test/wiki",
+        datetime(2026, 10, 21, 9, 0, tzinfo=UTC), similarity,
+    )
+
+
+def test_search_command_prints_passages_with_score_title_and_source(monkeypatch, capsys):
+    calls = []
+
+    def fake_search(conn, question, *, min_similarity):
+        calls.append((question, min_similarity))
+        return _result([_passage(0.786, heading="Setup", text="word " * 100), _passage(0.717)])
+
+    monkeypatch.setattr(ingest, "search", fake_search)
+    assert ingest.main(["search", "How do I build a wiki?"], connect=_no_database) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert calls == [("How do I build a wiki?", 0.70)]
+    saved = datetime(2026, 10, 21, 9, 0, tzinfo=UTC).astimezone().strftime("%Y-%m-%d")
+    assert lines[0] == f"1. 0.79  llm-wiki  (https://example.test/wiki, saved {saved})"
+    assert lines[1] == "   Section: Setup"
+    assert lines[2].endswith("...") and len(lines[2]) == 3 + 300 + 3
+    assert lines[3].startswith("2. 0.72  llm-wiki")
+    assert lines[4] == "   Short passage text."
+
+
+def test_search_command_says_nothing_close_enough_with_the_score(monkeypatch, capsys):
+    monkeypatch.setattr(ingest, "search", lambda conn, q, *, min_similarity: _result([], 0.402))
+    assert ingest.main(["search", "Who won the 2022 FIFA World Cup?"], connect=_no_database) == 0
+    assert capsys.readouterr().out == (
+        "Nothing close enough: the best similarity was 0.40,"
+        " below the provisional threshold 0.70.\n"
+    )
+
+
+def test_min_similarity_is_for_that_search_only(monkeypatch, capsys):
+    calls = []
+
+    def fake_search(conn, question, *, min_similarity):
+        calls.append(min_similarity)
+        return _result([], 0.65, min_similarity)
+
+    monkeypatch.setattr(ingest, "search", fake_search)
+    assert ingest.main(["search", "q", "--min-similarity", "0.8"], connect=_no_database) == 0
+    assert calls == [0.8]
+    assert capsys.readouterr().out == (
+        "Nothing close enough: the best similarity was 0.65, below the threshold 0.80.\n"
+    )
+    assert retrieval.PROVISIONAL_MIN_SIMILARITY == 0.70  # the constant never changes
+
+
+def test_search_command_on_an_empty_library(monkeypatch, capsys):
+    monkeypatch.setattr(ingest, "search", lambda conn, q, *, min_similarity: _result([], None))
+    assert ingest.main(["search", "q"], connect=_no_database) == 0
+    assert capsys.readouterr().out == "No documents saved yet.\n"
+
+
+@pytest.mark.parametrize("bad", ["abc", "1.5", "-2", "nan"])
+def test_a_bad_min_similarity_is_refused(bad):
+    with pytest.raises(SystemExit):
+        ingest.main(["search", "q", "--min-similarity", bad], connect=_no_database)
+
+
+def test_a_blank_question_prints_one_sentence(capsys):
+    # the real search refuses before any model or database is used
+    assert ingest.main(["search", "   "], connect=_no_database) == 1
+    out = capsys.readouterr().out
+    assert out == "Type a question to search for.\n"
