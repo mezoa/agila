@@ -16,18 +16,18 @@ def test_missing_variable_names_it_but_not_the_password(monkeypatch):
     assert "secret-value-123" not in str(err.value)
 
 
-def _insert_document(conn, identity_key="doc-1", status="active"):
+def _insert_document(conn, identity_key="doc-1", status="active", source_type="text"):
     return conn.execute(
         "INSERT INTO documents (space_id, title, source_type, identity_key, content_hash, status)"
-        " VALUES ((SELECT id FROM spaces LIMIT 1), 'T', 'text', %s, 'h', %s) RETURNING id",
-        (identity_key, status),
+        " VALUES ((SELECT id FROM spaces LIMIT 1), 'T', %s, %s, 'h', %s) RETURNING id",
+        (source_type, identity_key, status),
     ).fetchone()[0]
 
 
 @pytest.mark.db
 def test_migrate_on_empty_database(empty_db):
     with db.connect(dbname=empty_db, register=False) as plain:
-        assert db.migrate(plain) == ["0001_init.sql"]
+        assert db.migrate(plain) == ["0001_init.sql", "0002_identity_index_web_only.sql"]
         tables = {
             r[0]
             for r in plain.execute(
@@ -52,7 +52,21 @@ def test_second_migrate_is_a_noop(empty_db):
     with db.connect(dbname=empty_db, register=False) as plain:
         db.migrate(plain)
         assert db.migrate(plain) == []
-        assert plain.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 1
+        assert plain.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 2
+
+
+@pytest.mark.db
+def test_two_active_web_documents_with_one_identity_are_rejected(conn):
+    _insert_document(conn, "https://example.test/a", source_type="web")
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        _insert_document(conn, "https://example.test/a", source_type="web")
+
+
+@pytest.mark.db
+def test_two_active_text_documents_with_one_label_are_allowed(conn):
+    _insert_document(conn, "text:notes")
+    _insert_document(conn, "text:notes")
+    assert conn.execute("SELECT count(*) FROM documents WHERE status = 'active'").fetchone()[0] == 2
 
 
 @pytest.mark.db

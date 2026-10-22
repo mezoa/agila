@@ -6,7 +6,7 @@ import pytest
 
 from agila import library
 from agila.chunking import CACHE_DIR, Chunk, default_counter, embedded_text
-from agila.library import SaveError, save_markdown, save_text, save_url
+from agila.library import SaveError, describe, save_markdown, save_text, save_url
 from agila.web import FetchError
 
 pytestmark = [
@@ -156,12 +156,15 @@ def test_empty_input_is_refused_and_writes_nothing(conn, text):
     assert _count(conn, "documents") == 0
 
 
-def test_same_identity_twice_gives_already_saved_and_one_document(conn):
-    save_text(conn, "T", "same", "First version.", FakeEmbedder())
-    with pytest.raises(SaveError, match="Already saved: same"):
-        save_text(conn, "T", "same", "Changed version.", FakeEmbedder())
-    assert _count(conn, "documents") == 1
-    assert _count(conn, "chunks") == 1
+def test_two_different_notes_with_the_same_label_are_both_kept_with_a_warning(conn):
+    first = save_text(conn, "Old title", "same", "First version.", FakeEmbedder())
+    second = save_text(conn, "T", "same", "Changed version.", FakeEmbedder())
+    assert second.outcome == "saved"
+    assert f'document {first.document_id} "Old title"' in second.warning
+    assert "both are kept" in second.warning
+    rows = conn.execute("SELECT status, supersedes_id FROM documents ORDER BY id").fetchall()
+    assert rows == [("active", None), ("active", None)]
+    assert _count(conn, "chunks") == 2
 
 
 # --- save_url (block f part 1): the fetch is always a fake, no network ---
@@ -252,14 +255,18 @@ def test_a_failed_download_stores_nothing_and_keeps_its_sentence(conn):
 
 def test_same_url_with_other_tracking_parameters_is_already_saved(conn):
     fetcher = FakeFetcher(_page("article.html"))
-    save_url(conn, "https://example.test/post", fetcher=fetcher, embedder=FakeEmbedder())
-    with pytest.raises(SaveError, match="Already saved: https://example.test/post"):
-        save_url(
-            conn,
-            "HTTPS://Example.test/post/?utm_source=mail&fbclid=abc#comments",
-            fetcher=fetcher,
-            embedder=FakeEmbedder(),
-        )
+    first = save_url(conn, "https://example.test/post", fetcher=fetcher, embedder=FakeEmbedder())
+    embedder = CountingEmbedder()
+    again = save_url(
+        conn,
+        "HTTPS://Example.test/post/?utm_source=mail&fbclid=abc#comments",
+        fetcher=fetcher,
+        embedder=embedder,
+    )
+    assert again.outcome == "unchanged"
+    assert again.document_id == first.document_id
+    assert describe(again).startswith("Already saved, unchanged")
+    assert embedder.texts == 0
     assert _count(conn, "documents") == 1
 
 
@@ -303,3 +310,187 @@ def test_the_chunk_cap_does_not_apply_to_pasted_text(conn, monkeypatch):
     monkeypatch.setattr(library, "chunk_document", _fake_chunks(201))
     saved = save_text(conn, "Long note", "long.txt", "words " * 10, embedder=FakeEmbedder())
     assert saved.chunk_count == 201
+
+
+# --- block g: saving the same item again (FR7, FR8) ---
+
+
+def _status(conn, document_id):
+    return conn.execute(
+        "SELECT status, supersedes_id FROM documents WHERE id = %s", (document_id,)
+    ).fetchone()
+
+
+def _changed_article():
+    return _page("article.html").replace(
+        "</article>",
+        "<p>This paragraph was added later, so the content hash changes.</p></article>",
+    )
+
+
+def test_a_changed_page_supersedes_the_old_version(conn):
+    url = "https://example.test/post"
+    old = save_url(conn, url, fetcher=FakeFetcher(_page("article.html")), embedder=FakeEmbedder())
+    new = save_url(conn, url, fetcher=FakeFetcher(_changed_article()), embedder=FakeEmbedder())
+    assert new.outcome == "replaced"
+    assert new.replaced_ids == (old.document_id,)
+    assert _status(conn, old.document_id) == ("superseded", None)
+    assert _status(conn, new.document_id) == ("active", old.document_id)
+    active = conn.execute(
+        "SELECT count(*) FROM documents WHERE identity_key = %s AND status = 'active'", (url,)
+    ).fetchone()[0]
+    assert active == 1
+    old_chunks = conn.execute(
+        "SELECT count(*) FROM chunks WHERE document_id = %s", (old.document_id,)
+    ).fetchone()[0]
+    assert old_chunks == old.chunk_count  # kept, only marked superseded
+    assert describe(new) == (
+        f"Saved {new.title}: {new.chunk_count} chunks."
+        f" It replaces document {old.document_id}, now superseded."
+    )
+
+
+def test_replace_supersedes_the_note_with_the_same_label(conn):
+    old = save_text(conn, "T", "notes", "First version.", FakeEmbedder())
+    new = save_text(conn, "T", "notes", "Second version.", FakeEmbedder(), replace=True)
+    assert (new.outcome, new.replaced_ids, new.warning) == ("replaced", (old.document_id,), None)
+    assert _status(conn, old.document_id) == ("superseded", None)
+    assert _status(conn, new.document_id) == ("active", old.document_id)
+
+
+def test_an_identical_note_is_already_saved_unchanged(conn):
+    first = save_text(conn, "T", "notes", "Same words.\n", FakeEmbedder())
+    embedder = CountingEmbedder()
+    again = save_text(conn, "T", "notes", "Same words.\r\n", embedder)  # line endings normalised
+    assert (again.outcome, again.document_id, again.chunk_count) == (
+        "unchanged", first.document_id, first.chunk_count
+    )
+    assert embedder.texts == 0
+    assert _count(conn, "documents") == 1
+
+
+def test_replace_with_identical_content_is_still_unchanged(conn):
+    first = save_text(conn, "T", "notes", "Same words.", FakeEmbedder())
+    again = save_text(conn, "T", "notes", "Same words.", FakeEmbedder(), replace=True)
+    assert (again.outcome, again.document_id) == ("unchanged", first.document_id)
+    assert _status(conn, first.document_id) == ("active", None)
+    assert _count(conn, "documents") == 1
+
+
+def test_replace_supersedes_every_active_note_with_that_label(conn):
+    a = save_text(conn, "A", "notes", "Version A.", FakeEmbedder())
+    b = save_text(conn, "B", "notes", "Version B.", FakeEmbedder())
+    assert f'document {b.document_id} "B"' not in (b.warning or "")
+    c = save_text(conn, "C", "notes", "Version C.", FakeEmbedder())
+    assert f'document {b.document_id} "B" and document {a.document_id} "A"' in c.warning
+    assert "all are kept" in c.warning
+    d = save_text(conn, "D", "notes", "Version D.", FakeEmbedder(), replace=True)
+    assert d.replaced_ids == (c.document_id, b.document_id, a.document_id)  # newest first
+    assert _status(conn, d.document_id) == ("active", c.document_id)
+    statuses = [_status(conn, x.document_id)[0] for x in (a, b, c)]
+    assert statuses == ["superseded"] * 3
+
+
+def test_a_failed_replace_leaves_the_old_version_active(conn, monkeypatch):
+    old = save_text(conn, "T", "notes", "First version.", FakeEmbedder())
+
+    def bad_vectors(title, chunks, embedder=None):  # 2nd chunk rejected inside the transaction
+        return [np.zeros(384 if i == 0 else 10, dtype=np.float32) for i in range(len(chunks))]
+
+    monkeypatch.setattr(library, "embed_chunks", bad_vectors)
+    text = "\n\n".join(f"Paragraph {i}. " + "word " * 250 for i in range(4))
+    with pytest.raises(SaveError, match="nothing was saved"):
+        save_text(conn, "T", "notes", text, FakeEmbedder(), replace=True)
+    assert _status(conn, old.document_id) == ("active", None)
+    assert _count(conn, "documents") == 1
+    assert _count(conn, "chunks") == old.chunk_count
+
+
+# --- block g: list, archive, unarchive, delete (FR18, FR19, FR20) ---
+
+
+def _vectors(conn, document_id):
+    return [
+        (pos, text, emb.to_list())
+        for pos, text, emb in conn.execute(
+            "SELECT position, text, embedding FROM chunks WHERE document_id = %s"
+            " ORDER BY position",
+            (document_id,),
+        )
+    ]
+
+
+def test_list_shows_title_date_status_and_visibility(conn):
+    old = save_text(conn, "Old", "a", "First version.", FakeEmbedder())
+    save_text(conn, "New", "a", "Second version.", FakeEmbedder(), replace=True)
+    kept = save_text(conn, "Kept", "b", "Archived text.", FakeEmbedder())
+    library.archive(conn, kept.document_id)
+    rows = {d.title: d for d in library.list_documents(conn)}
+    assert set(rows) == {"Old", "New", "Kept"}
+    assert {d.title: d.status for d in rows.values()} == {
+        "Old": "superseded", "New": "active", "Kept": "archived"
+    }
+    for d in rows.values():
+        assert d.saved_at.tzinfo is not None
+        assert d.visibility == "anywhere"
+    assert rows["Old"].document_id == old.document_id
+
+
+def test_archive_and_unarchive_round_trip(conn):
+    saved = save_text(conn, "T", "L", "Some text to keep.", FakeEmbedder())
+    before = _vectors(conn, saved.document_id)
+    assert library.archive(conn, saved.document_id) == "T"
+    assert _status(conn, saved.document_id)[0] == "archived"
+    assert _vectors(conn, saved.document_id) == before
+    assert library.unarchive(conn, saved.document_id) == "T"
+    assert _status(conn, saved.document_id)[0] == "active"
+    assert _vectors(conn, saved.document_id) == before
+
+
+def test_archive_and_unarchive_refuse_the_wrong_status(conn):
+    old = save_text(conn, "T", "L", "First version.", FakeEmbedder())
+    new = save_text(conn, "T", "L", "Second version.", FakeEmbedder(), replace=True)
+    with pytest.raises(library.LibraryError, match="^No document with id 999999.$"):
+        library.archive(conn, 999999)
+    with pytest.raises(library.LibraryError, match="^No document with id 999999.$"):
+        library.unarchive(conn, 999999)
+    with pytest.raises(library.LibraryError, match="is superseded; only active documents"):
+        library.archive(conn, old.document_id)
+    with pytest.raises(library.LibraryError, match=f"^Document {new.document_id} is not archived"):
+        library.unarchive(conn, new.document_id)
+    assert _status(conn, new.document_id)[0] == "active"
+
+
+def test_unarchiving_a_page_with_a_newer_active_copy_is_refused(conn):
+    url = "https://example.test/post"
+    old = save_url(conn, url, fetcher=FakeFetcher(_page("article.html")), embedder=FakeEmbedder())
+    library.archive(conn, old.document_id)
+    # Q2: only active copies count, so the same link saved again is a new active copy
+    new = save_url(conn, url, fetcher=FakeFetcher(_page("article.html")), embedder=FakeEmbedder())
+    assert new.outcome == "saved" and new.document_id != old.document_id
+    newer = f"newer copy .* active \\(document {new.document_id}\\)"
+    with pytest.raises(library.LibraryError, match=newer):
+        library.unarchive(conn, old.document_id)
+    assert _status(conn, old.document_id)[0] == "archived"
+
+
+def test_delete_removes_the_document_and_all_its_chunks(conn):
+    doomed = save_text(conn, "Gone", "a", "Delete this text.", FakeEmbedder())
+    other = save_text(conn, "Stays", "b", "Keep this text.", FakeEmbedder())
+    info = library.delete_document(conn, doomed.document_id)
+    assert (info.title, info.source_type, info.chunk_count) == ("Gone", "text", 1)
+    for table, column in (("documents", "id"), ("chunks", "document_id")):
+        left = conn.execute(
+            f"SELECT count(*) FROM {table} WHERE {column} = %s", (doomed.document_id,)
+        ).fetchone()[0]
+        assert left == 0
+    assert _vectors(conn, other.document_id) != []
+    with pytest.raises(library.LibraryError, match="No document with id"):
+        library.delete_document(conn, doomed.document_id)
+
+
+def test_deleting_an_old_version_clears_the_link_from_the_new_one(conn):
+    old = save_text(conn, "T", "L", "First version.", FakeEmbedder())
+    new = save_text(conn, "T", "L", "Second version.", FakeEmbedder(), replace=True)
+    library.delete_document(conn, old.document_id)
+    assert _status(conn, new.document_id) == ("active", None)
