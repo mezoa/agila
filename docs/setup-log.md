@@ -167,3 +167,13 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Fast tests: `uv run pytest` -> 260 passed, 66 deselected. Database tests: `uv run --env-file .env pytest -m db -q` -> 66 passed (throwaway `agila_test` only)
 - New temporary command (replaced by the CLI in block j): `uv run --env-file .env python -m agila.ingest search "QUESTION" [--min-similarity X]`; the default threshold is the PROVISIONAL 0.70; the first search in a new process loads the model (about 1.2 s, V57)
 - Not yet run (Eo, real library, read-only): the two hand searches of plan block h, verification 3
+
+## Day 6 (2026-10-22), block i: the model call, checked answers, fallback, one call at a time
+- `uv add pydantic` -> pydantic 2.14.1 (with pydantic-core 2.50.1, annotated-types 0.8.0, typing-inspection 0.4.4); `pyproject.toml` declares `pydantic>=2.14.1`, `uv.lock` pins the exact versions
+- `ollama --version` -> `ollama version is 0.40.7` (it was 0.40.4 on 2026-10-17: the Ollama Windows app updated itself; research V68, DEVIATIONS row 32)
+- New files: `src/agila/sentences.py`, `src/agila/llm.py`, `src/agila/ask.py`, `tests/test_sentences.py`, `tests/test_llm.py`, `tests/test_ask.py`, `tests/test_live_injection.py`, `tests/fixtures/injection.txt`; changed: `web.py` (uses `sentences.py`), `ingest.py` (`ask`), `tests/test_ingest.py`, `pyproject.toml` (`live` marker)
+- Fast tests: `uv run pytest` -> 324 passed, 68 deselected. Database tests: `uv run --env-file .env pytest -m db -q` -> 67 passed (throwaway `agila_test` only)
+- Live check (needs Ollama on 127.0.0.1:11434): `uv run pytest -m live -v` -> 1 passed (no PWNED)
+- New temporary command (replaced by the CLI in block j; writes no `last_asked_at` and no `query_log`): `uv run --env-file .env python -m agila.ingest ask "QUESTION"`. Smoke run 2026-10-22: the knowledge-base question gave a 3-citation answer from `llm-wiki` in about 21 s; the World Cup question printed the refusal sentence
+- `scripts/ollama_spike.py` NOT deleted: `tests/test_ollama_spike.py` loads it (3 tests); both kept until the Gate 1 cleanup (Eo, 2026-10-22)
+- Hand check (Eo): `ingest ask` answer with 5 cited sentences; refusal with no model call; Ollama down -> readable sentence plus passages; `pytest -m live` passed twice; `last_asked_at` empty on 4 of 4 documents, `query_log` 0 rows

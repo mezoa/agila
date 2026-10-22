@@ -8,6 +8,10 @@
     uv run --env-file .env python -m agila.ingest unarchive ID
     uv run --env-file .env python -m agila.ingest delete ID [--yes]
     uv run --env-file .env python -m agila.ingest search "QUESTION" [--min-similarity X]
+    uv run --env-file .env python -m agila.ingest ask "QUESTION"
+
+`ask` (block i, assumed until block j) needs Ollama running. Like `search`, it never writes
+`last_asked_at` or `query_log`: that is block j's ask flow (FR35).
 """
 
 import argparse
@@ -19,6 +23,7 @@ from pathlib import Path
 import psycopg
 
 from agila import db
+from agila.ask import answer, format_answer
 from agila.library import (
     LibraryError,
     SaveError,
@@ -81,6 +86,8 @@ def _parser() -> argparse.ArgumentParser:
         default=PROVISIONAL_MIN_SIMILARITY,
         help=f"for this search only (default: provisional {PROVISIONAL_MIN_SIMILARITY})",
     )
+    ask = sub.add_parser("ask", help="answer a question from the saved passages (needs Ollama)")
+    ask.add_argument("question")
     for name, what in (("archive", "archive"), ("unarchive", "un-archive")):
         command = sub.add_parser(name, help=f"{what} one document")
         command.add_argument("id", type=_document_id)
@@ -140,7 +147,14 @@ def _search(conn: psycopg.Connection, question: str, min_similarity: float) -> l
     return lines
 
 
+def _ask(conn: psycopg.Connection, question: str) -> list[str]:
+    """Search, then the checked answer; reads only (no `last_asked_at`, no `query_log`)."""
+    return format_answer(answer(question, search(conn, question).passages)).splitlines()
+
+
 def _manage(conn: psycopg.Connection, args: argparse.Namespace) -> list[str]:
+    if args.command == "ask":
+        return _ask(conn, args.question)
     if args.command == "search":
         return _search(conn, args.question, args.min_similarity)
     if args.command == "list":
@@ -162,7 +176,7 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
                 raise SaveError(f"File not found: {args.file}")
             text = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
         with connect() as conn:
-            if args.command in ("list", "archive", "unarchive", "delete", "search"):
+            if args.command in ("list", "archive", "unarchive", "delete", "search", "ask"):
                 lines = _manage(conn, args)
             else:
                 if args.command == "text":

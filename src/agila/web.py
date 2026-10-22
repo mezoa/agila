@@ -7,12 +7,12 @@ are further down.
 """
 
 import asyncio
-import re
 
 import httpx
 import trafilatura
 
 from agila.netcheck import AddressRefused, Resolver, vet_host
+from agila.sentences import count_sentences  # the one sentence rule; also re-exported
 from agila.urls import UrlError, check_url
 
 TIMEOUT_SECONDS = 15.0
@@ -21,7 +21,6 @@ MAX_BYTES = 5 * 1024 * 1024  # 5 MiB [assumed, FR2]
 ALLOWED_TYPES = {"text/html", "application/xhtml+xml", "text/plain"}
 MIN_CHARACTERS = 200
 MIN_SENTENCES = 3
-MIN_WORDS_PER_SENTENCE = 3
 
 
 class WebError(Exception):
@@ -153,48 +152,6 @@ def fetch_html(
     except RuntimeError:
         return asyncio.run(fetch_html_async(url, timeout, transport, resolver))
     raise FetchError("fetch_html cannot run inside an event loop; await fetch_html_async instead.")
-
-
-# Words before a full stop that do not end a sentence. "etc." is left out: it often does.
-ABBREVIATIONS = {"e.g.", "i.e.", "vs.", "mr.", "mrs.", "ms.", "dr.", "prof.", "fig.", "approx."}
-DOTTED_INITIALS = re.compile(r"^(?:[a-z]\.){2,}$")  # u.s. , a.m.
-BREAK = re.compile(r"(?P<end>[.!?]+)\s+|\n+")
-
-
-def count_sentences(text: str) -> int:
-    """Count sentences [assumed rule, FR2].
-
-    Cut at ".", "!" or "?" followed by whitespace, and at line breaks, but not after an
-    abbreviation such as "e.g."; "3.5" has no space after the dot, so it never splits. A piece
-    of fewer than 3 words is joined to the piece before it (or after it, at the start), so a menu
-    line like "Home" never counts. The count is the number of pieces left.
-    """
-    pieces: list[str] = []
-    start = 0
-    for match in BREAK.finditer(text):
-        end = match.group("end")
-        if end is not None:
-            last_word = text[start : match.end("end")].split()[-1].lower()
-            if end == "." and (last_word in ABBREVIATIONS or DOTTED_INITIALS.match(last_word)):
-                continue
-            pieces.append(text[start : match.end("end")])
-        else:
-            pieces.append(text[start : match.start()])
-        start = match.end()
-    pieces.append(text[start:])
-
-    units: list[str] = []
-    carry = ""
-    for piece in (p.strip() for p in pieces if p.strip()):
-        piece = f"{carry} {piece}".strip()
-        carry = ""
-        if len(piece.split()) >= MIN_WORDS_PER_SENTENCE:
-            units.append(piece)
-        elif units:
-            units[-1] += f" {piece}"
-        else:
-            carry = piece
-    return len(units)
 
 
 def check_text(text: str | None) -> str:

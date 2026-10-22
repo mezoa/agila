@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from agila import db, ingest, library, netcheck, retrieval
+from agila import ask, db, ingest, library, llm, netcheck, retrieval
 from agila.chunking import CACHE_DIR
 
 
@@ -281,3 +281,90 @@ def test_a_blank_question_prints_one_sentence(capsys):
     assert ingest.main(["search", "   "], connect=_no_database) == 1
     out = capsys.readouterr().out
     assert out == "Type a question to search for.\n"
+
+
+# --- block i: ingest ask (assumed until block j); a fake scripted model, never Ollama ---
+
+
+class ScriptedModel:
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.calls = 0
+
+    def chat(self, messages):
+        self.calls += 1
+        return llm.Reply(self.replies.pop(0), 1000)
+
+
+ANSWER = (
+    '{"answerable": true, "answer": "Short passage text says it.",'
+    ' "citations": [{"chunk_id": 11, "sentence": 1}]}'
+)
+
+
+def test_ask_command_prints_the_answer_and_its_source(monkeypatch, capsys):
+    model = ScriptedModel(ANSWER)
+    monkeypatch.setattr(ingest, "search", lambda conn, q: _result([_passage(0.79, "Setup")]))
+    monkeypatch.setattr(ingest, "answer", lambda q, p: ask.answer(q, p, model=model))
+    assert ingest.main(["ask", "What does it say?"], connect=_no_database) == 0
+    saved = datetime(2026, 10, 21, 9, 0, tzinfo=UTC).astimezone().strftime("%Y-%m-%d")
+    assert capsys.readouterr().out.splitlines() == [
+        "Short passage text says it.",
+        "",
+        "Sources:",
+        '1. "Short passage text."',
+        f"   llm-wiki - Setup (https://example.test/wiki, saved {saved})",
+    ]
+
+
+def test_ask_command_refuses_without_a_model_call(monkeypatch, capsys):
+    model = ScriptedModel()
+    monkeypatch.setattr(ingest, "search", lambda conn, q: _result([], 0.40))
+    monkeypatch.setattr(ingest, "answer", lambda q, p: ask.answer(q, p, model=model))
+    assert ingest.main(["ask", "Who won the 2022 FIFA World Cup?"], connect=_no_database) == 0
+    assert capsys.readouterr().out == "I couldn't find this in your saved material.\n"
+    assert model.calls == 0
+
+
+ASK_STATE = (
+    "SELECT (SELECT count(*) FROM query_log),"
+    " (SELECT array_agg(last_asked_at ORDER BY id) FROM documents)"
+)
+
+
+class SameVectorEmbedder:
+    """Fake model: the question gets the same unit vector as the saved chunk (similarity 1)."""
+
+    def query_embed(self, query):
+        return iter([UNIT.copy()])
+
+
+UNIT = np.zeros(384, dtype=np.float32)
+UNIT[0] = 1.0
+
+
+@pytest.mark.db
+def test_ask_command_writes_neither_last_asked_at_nor_query_log(conn, empty_db, monkeypatch):
+    document = conn.execute(
+        "INSERT INTO documents (space_id, title, source_type, source_label, identity_key,"
+        " content_hash) VALUES ((SELECT id FROM spaces LIMIT 1), 'Never asked', 'text', 'L',"
+        " 'text:L', 'h') RETURNING id"
+    ).fetchone()[0]
+    chunk = conn.execute(
+        "INSERT INTO chunks (document_id, position, text, embedding)"
+        " VALUES (%s, 0, 'Short passage text.', %s) RETURNING id",
+        (document, UNIT),
+    ).fetchone()[0]
+    before = conn.execute(ASK_STATE).fetchone()
+    conn.commit()
+    model = ScriptedModel(ANSWER.replace('"chunk_id": 11', f'"chunk_id": {chunk}'))
+    monkeypatch.setattr(
+        ingest, "search", lambda c, q: retrieval.search(c, q, embedder=SameVectorEmbedder())
+    )
+    monkeypatch.setattr(ingest, "answer", lambda q, p: ask.answer(q, p, model=model))
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        assert ingest.main(["ask", "What does it say?"], connect=_test_database(empty_db)) == 0
+    assert out.getvalue().startswith("Short passage text says it.")
+    assert model.calls == 1
+    assert conn.execute(ASK_STATE).fetchone() == before
+    assert before == (0, [None])

@@ -13,6 +13,7 @@ dependencies = [
     "numpy>=2.5.4",
     "pgvector>=0.5.1",
     "psycopg[binary]>=3.3.6",
+    "pydantic>=2.14.1",
     "trafilatura>=2.3.1",
 ]
 
@@ -35,5 +36,8 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not db'"
-markers = ["db: needs the Postgres container and a .env (run with -m db)"]
+addopts = "-m 'not db and not live'"
+markers = [
+    "db: needs the Postgres container and a .env (run with -m db)",
+    "live: calls the real local Ollama on loopback (run with -m live)",
+]
