@@ -173,6 +173,9 @@ def test_another_http_status_names_the_code():
         llm.MODEL_MISSING,
         llm.CONNECTION_FAILED,
         llm.UNREADABLE,
+        llm.OLLAMA_DOWN,
+        llm.OLLAMA_SLOW,
+        llm.OLLAMA_ERROR,
     ],
 )
 def test_every_sentence_has_at_most_25_words(sentence):
@@ -198,3 +201,57 @@ def test_the_lock_is_released_after_an_error():
             raise RuntimeError("model failed")
     with llm.one_call_at_a_time():
         pass
+
+
+# --- block j: warm-up (decision 5) and the /health check (decision 4) ---
+
+
+def test_the_warm_up_uses_the_same_model_settings_as_a_real_ask():
+    ask, warm = llm.request_body([{"role": "user", "content": "hi"}]), llm.warm_up_body()
+    assert warm["options"] == ask["options"] == llm.options()
+    for key in ("model", "think", "stream", "keep_alive"):
+        assert warm[key] == ask[key]
+
+
+def test_the_warm_up_sends_no_messages_to_the_chat_endpoint():
+    seen = []
+    llm.warm_up(transport=_transport(lambda r: httpx.Response(200, json={"done": True}), seen))
+    (request,) = seen
+    assert str(request.url) == "http://127.0.0.1:11434/api/chat"
+    assert json.loads(request.content) == llm.warm_up_body()
+    assert llm.warm_up_body()["messages"] == []
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [_raise(httpx.ConnectError), _raise(httpx.ReadTimeout), lambda r: httpx.Response(500)],
+)
+def test_a_failed_warm_up_is_logged_and_never_raised(handler, caplog):
+    with caplog.at_level(logging.WARNING, logger="agila.llm"):
+        llm.warm_up(transport=_transport(handler))
+    assert "warm-up failed" in caplog.records[0].getMessage()
+
+
+def test_the_ollama_check_asks_for_the_version_only():
+    seen = []
+    version = _transport(lambda r: httpx.Response(200, json={"version": "0.40.8"}), seen)
+    assert llm.check_ollama(transport=version) is None
+    assert (seen[0].method, str(seen[0].url)) == ("GET", "http://127.0.0.1:11434/api/version")
+
+
+@pytest.mark.parametrize(
+    ("handler", "sentence"),
+    [
+        (_raise(httpx.ConnectError), llm.OLLAMA_DOWN),
+        (_raise(httpx.ConnectTimeout), llm.OLLAMA_SLOW),
+        (_raise(httpx.ReadTimeout), llm.OLLAMA_SLOW),
+        (_raise(httpx.RemoteProtocolError), llm.OLLAMA_ERROR),
+        (lambda r: httpx.Response(500), llm.OLLAMA_ERROR),
+    ],
+)
+def test_each_ollama_check_failure_is_one_sentence(handler, sentence):
+    assert llm.check_ollama(transport=_transport(handler)) == sentence
+
+
+def test_the_ollama_check_waits_3_seconds():
+    assert llm.CHECK_SECONDS == 3.0

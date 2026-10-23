@@ -16,7 +16,7 @@ Agila is Eo's personal knowledge assistant: save links, text, Markdown and text 
 - Unit tests use a fake scripted model and saved fixtures: no network, no Ollama, no live websites.
 - Never read, print, edit or commit `.env`. Secrets (Discord token, API key, database password) live only there.
 - `loop-lab` is reference only. Read it, never edit it.
-- Only `llm.py` talks to Ollama. The CLI, the Discord bot and n8n call the API and hold no search or answer logic.
+- Only llm.py talks to Ollama. The CLI and the API call the same search and ask functions (questions.py) and write the same query_log; the Discord bot and n8n call the API and hold no search or answer logic.
 - The API is published only as `127.0.0.1:8000:8000`. Documents saved with `--private` never go to Discord, `/stale`, the digest, the bot or n8n.
 - Do not build anything the PRD does not list for the current tier. A new idea goes to the backlog in the PRD, not into the code.
 

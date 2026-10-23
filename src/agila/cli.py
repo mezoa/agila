@@ -1,17 +1,19 @@
-"""Temporary command line for the library (assumed, until the real CLI in block j).
+"""The command line (FR25): save, ask, search, list, archive, unarchive, delete, evaluate.
 
-    uv run --env-file .env python -m agila.ingest text --title T --label L [--file PATH] [--replace]
-    uv run --env-file .env python -m agila.ingest markdown PATH [--title T] [--label L] [--replace]
-    uv run --env-file .env python -m agila.ingest url URL [--title T] [--replace]
-    uv run --env-file .env python -m agila.ingest list
-    uv run --env-file .env python -m agila.ingest archive ID
-    uv run --env-file .env python -m agila.ingest unarchive ID
-    uv run --env-file .env python -m agila.ingest delete ID [--yes]
-    uv run --env-file .env python -m agila.ingest search "QUESTION" [--min-similarity X]
-    uv run --env-file .env python -m agila.ingest ask "QUESTION"
+    uv run --env-file .env python -m agila.cli text --title T --label L [--file PATH] [--replace]
+    uv run --env-file .env python -m agila.cli markdown PATH [--title T] [--label L] [--replace]
+    uv run --env-file .env python -m agila.cli url URL [--title T] [--replace]
+    uv run --env-file .env python -m agila.cli list
+    uv run --env-file .env python -m agila.cli archive ID
+    uv run --env-file .env python -m agila.cli unarchive ID
+    uv run --env-file .env python -m agila.cli delete ID [--yes]
+    uv run --env-file .env python -m agila.cli search "QUESTION" [--min-similarity X]
+    uv run --env-file .env python -m agila.cli ask "QUESTION"
+    uv run --env-file .env python -m agila.cli evaluate
 
-`ask` (block i, assumed until block j) needs Ollama running. Like `search`, it never writes
-`last_asked_at` or `query_log`: that is block j's ask flow (FR35).
+It calls the library, search and ask functions directly, not the API, so it works with the API
+stopped (Eo, 7.J1). `ask` needs Ollama and writes one `query_log` row with channel `cli` (FR35);
+`search` writes nothing. `evaluate` is a stub until the golden set (block l).
 """
 
 import argparse
@@ -23,7 +25,7 @@ from pathlib import Path
 import psycopg
 
 from agila import db
-from agila.ask import answer, format_answer
+from agila.ask import format_answer
 from agila.library import (
     LibraryError,
     SaveError,
@@ -37,10 +39,12 @@ from agila.library import (
     save_url,
     unarchive,
 )
+from agila.questions import ask_question
 from agila.retrieval import PROVISIONAL_MIN_SIMILARITY, search
 
 MAX_ID = 2**63 - 1  # documents.id is a bigint
 SHOWN_CHARACTERS = 300
+NOT_BUILT = "The evaluate command is not built yet; it comes with the golden set in block l."
 
 
 def _similarity(text: str) -> float:
@@ -60,7 +64,7 @@ def _document_id(text: str) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m agila.ingest")
+    parser = argparse.ArgumentParser(prog="python -m agila.cli")
     sub = parser.add_subparsers(dest="command", required=True)
     replace_help = "supersede the saved item with the same label or link"
     text = sub.add_parser("text", help="save pasted text (from --file or standard input)")
@@ -88,6 +92,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     ask = sub.add_parser("ask", help="answer a question from the saved passages (needs Ollama)")
     ask.add_argument("question")
+    sub.add_parser("evaluate", help="score the golden set (stub: not built until block l)")
     for name, what in (("archive", "archive"), ("unarchive", "un-archive")):
         command = sub.add_parser(name, help=f"{what} one document")
         command.add_argument("id", type=_document_id)
@@ -148,8 +153,8 @@ def _search(conn: psycopg.Connection, question: str, min_similarity: float) -> l
 
 
 def _ask(conn: psycopg.Connection, question: str) -> list[str]:
-    """Search, then the checked answer; reads only (no `last_asked_at`, no `query_log`)."""
-    return format_answer(answer(question, search(conn, question).passages)).splitlines()
+    """Search, the checked answer, and its `query_log` row (channel `cli`)."""
+    return format_answer(ask_question(conn, question, "cli")).splitlines()
 
 
 def _manage(conn: psycopg.Connection, args: argparse.Namespace) -> list[str]:
@@ -168,6 +173,9 @@ def _manage(conn: psycopg.Connection, args: argparse.Namespace) -> list[str]:
 
 def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "evaluate":  # STUB until block l: runs nothing, opens no database
+        print(NOT_BUILT)
+        return 1
     try:
         if args.command == "markdown" and not args.path.is_file():
             raise SaveError(f"File not found: {args.path}")
@@ -195,7 +203,7 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
         print(exc)
         return 1
     except RuntimeError as exc:  # a missing POSTGRES_* variable (db.connect never prints values)
-        print(f"{exc}. Run with: uv run --env-file .env python -m agila.ingest ...")
+        print(f"{exc}. Run with: uv run --env-file .env python -m agila.cli ...")
         return 1
     except psycopg.OperationalError:
         print("Cannot reach the database. Start it with: docker compose up -d")

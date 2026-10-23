@@ -29,6 +29,10 @@ class LibraryError(Exception):
     """A list, archive, unarchive or delete failure with one readable sentence; nothing changed."""
 
 
+class NotFound(LibraryError):
+    """No document has that id (the API answers 404)."""
+
+
 @dataclass(frozen=True)
 class Listed:
     document_id: int
@@ -391,5 +395,5 @@ def _row(conn: psycopg.Connection, document_id: int, columns: str, lock: bool = 
         (document_id,),
     ).fetchone()
     if row is None:
-        raise LibraryError(f"No document with id {document_id}.")
+        raise NotFound(f"No document with id {document_id}.")
     return row

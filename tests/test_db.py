@@ -16,6 +16,58 @@ def test_missing_variable_names_it_but_not_the_password(monkeypatch):
     assert "secret-value-123" not in str(err.value)
 
 
+# --- block j: the /health database check (no database needed) ---
+
+
+class _FakeConn:
+    def __init__(self, seen):
+        self.seen = seen
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql):
+        self.seen["sql"] = sql
+        return self
+
+    def fetchone(self):
+        return (1,)
+
+
+def test_the_database_check_runs_select_1_with_a_3_second_limit(monkeypatch):
+    seen = {}
+
+    def fake_connect(**kwargs):
+        seen.update(kwargs)
+        return _FakeConn(seen)
+
+    monkeypatch.setattr(db, "connect", fake_connect)
+    assert db.check_database() is None
+    assert (seen["connect_timeout"], seen["register"], seen["sql"]) == (3, False, "SELECT 1")
+
+
+def test_a_database_that_does_not_answer_gives_one_sentence(monkeypatch):
+    def refused(**kwargs):
+        raise psycopg.OperationalError("connection timeout expired")
+
+    monkeypatch.setattr(db, "connect", refused)
+    assert db.check_database() == db.DATABASE_DOWN
+    assert len(db.DATABASE_DOWN.split()) <= 25
+
+
+def test_a_missing_variable_in_the_check_is_named_without_a_value(monkeypatch):
+    for name in db.ENV_VARS:
+        monkeypatch.setenv(name, "x")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "secret-value-123")
+    monkeypatch.delenv("POSTGRES_HOST")
+    assert db.check_database() == (
+        "Missing environment variable POSTGRES_HOST, so the database cannot be reached."
+    )
+
+
 def _insert_document(conn, identity_key="doc-1", status="active", source_type="text"):
     return conn.execute(
         "INSERT INTO documents (space_id, title, source_type, identity_key, content_hash, status)"

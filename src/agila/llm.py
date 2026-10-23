@@ -5,7 +5,8 @@ message with each passage between `<passage chunk_id="N">` and `</passage>` and 
 numbered `[1]`, `[2]`, ... by `split_sentences`, the FR12 schema in `format`, `think: false`,
 temperature 0, `keep_alive` 30m and `num_ctx` 8192. Every failure becomes `ModelError` with one
 readable sentence (NFR7). Callers hold `one_call_at_a_time()` around their calls; checking the
-reply, the retry and the fallback live in `ask.py`.
+reply, the retry and the fallback live in `ask.py`. Block j adds the warm-up (V76) and the
+`/health` check (V75), both built from the same settings as a real ask.
 """
 
 import json
@@ -28,6 +29,7 @@ KEEP_ALIVE = "30m"
 TEMPERATURE = 0  # same request, same reply (V63)
 TIMEOUT_SECONDS = 120.0  # FR34; with stream false nothing arrives until the reply is done (V65)
 WARN_SHARE = 0.8  # warn when the prompt fills more than 80% of num_ctx (decisions.md)
+CHECK_SECONDS = 3.0  # /health: above the 2 s a refused connect takes on Windows (V75)
 
 BUSY = "Agila is answering another question right now. Try again in a minute."
 NOT_RUNNING = "Ollama is not running, so I can't write an answer. Start Ollama and ask again."
@@ -44,6 +46,12 @@ CONNECTION_FAILED = (
 UNREADABLE = (
     "Ollama sent a reply I could not read, so I can't write an answer. Check Ollama and ask again."
 )
+OLLAMA_DOWN = "Ollama is not running, so answers fall back to passages. Start Ollama."
+OLLAMA_SLOW = (
+    f"Ollama did not answer within {CHECK_SECONDS:.0f} seconds, so answers may fall back to"
+    " passages. Check Ollama."
+)
+OLLAMA_ERROR = "Ollama answered the health check with an error. Check Ollama."
 
 # FR12. Kept flat and inline: the shape tested against the real model (V59).
 ANSWER_SCHEMA = {
@@ -120,6 +128,11 @@ def build_messages(question: str, passages: Sequence[Passage]) -> list[dict]:
     return [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
 
 
+def options() -> dict:
+    """The model options of every request. A load with other options reloads the model (V76)."""
+    return {"num_ctx": NUM_CTX, "temperature": TEMPERATURE}
+
+
 def request_body(messages: list[dict]) -> dict:
     return {
         "model": MODEL,
@@ -128,7 +141,19 @@ def request_body(messages: list[dict]) -> dict:
         "think": False,
         "stream": False,
         "keep_alive": KEEP_ALIVE,
-        "options": {"num_ctx": NUM_CTX, "temperature": TEMPERATURE},
+        "options": options(),
+    }
+
+
+def warm_up_body() -> dict:
+    """No messages: Ollama only loads the model, with the settings real asks use (V76)."""
+    return {
+        "model": MODEL,
+        "messages": [],
+        "think": False,
+        "stream": False,
+        "keep_alive": KEEP_ALIVE,
+        "options": options(),
     }
 
 
@@ -161,6 +186,33 @@ def chat(messages: list[dict], transport: httpx.BaseTransport | None = None) -> 
     if isinstance(count, int) and count > WARN_SHARE * NUM_CTX:
         log.warning("The prompt used %d of %d context tokens.", count, NUM_CTX)
     return Reply(content, count if isinstance(count, int) else None)
+
+
+def warm_up(transport: httpx.BaseTransport | None = None) -> None:
+    """Load the model in the background at API startup. Takes no lock (an ask that arrives meanwhile
+    is queued by Ollama, V67); a failure is logged, never raised."""
+    try:
+        with httpx.Client(transport=transport, timeout=TIMEOUT_SECONDS, trust_env=False) as client:
+            response = client.post(f"{BASE_URL}/api/chat", json=warm_up_body())
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        name = type(exc).__name__
+        log.warning("The model warm-up failed (%s); the first ask will load it.", name)
+
+
+def check_ollama(transport: httpx.BaseTransport | None = None) -> str | None:
+    """/health: `GET /api/version`, which never loads the model (V75). None when Ollama answers,
+    else one sentence."""
+    try:
+        with httpx.Client(transport=transport, timeout=CHECK_SECONDS, trust_env=False) as client:
+            response = client.get(f"{BASE_URL}/api/version")
+    except httpx.TimeoutException:  # before ConnectError: a connect timeout is both
+        return OLLAMA_SLOW
+    except httpx.ConnectError:
+        return OLLAMA_DOWN
+    except httpx.HTTPError:
+        return OLLAMA_ERROR
+    return None if response.status_code == 200 else OLLAMA_ERROR
 
 
 _lock = threading.Lock()
