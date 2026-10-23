@@ -17,3 +17,5 @@ raw/
 
 # model cache (downloaded files, not source)
 .cache/
+
+.vscode/
