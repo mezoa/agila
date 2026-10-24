@@ -10,6 +10,11 @@ Source: Eo's uploaded file "ACE simple format" (it cites HumanLayer's advanced-c
 5. **Stop on failure.** If a step fails or a verification does not pass: stop, mark the step `[x] Failed (cause)` in `plan_latest.md`, add a dated line to the Lessons log in `research_latest.md`, return to Research. Do not retry blindly.
 6. **No guessing.** If something is not verified (a command, a flag, a version, a limit), say so, then test it or look it up in the official docs and record the source and date.
 
+## Secrets in the shell (added 2026-10-24, after the `docker compose config` incident in the research Lessons log)
+7. **Never run `docker compose config` unfiltered.** Use `docker compose config --quiet` (validates only), or pipe it to `Select-String` with a pattern that matches only the lines you need (for example `published|host_ip|127.0.0.1`).
+8. **Never print the environment.** List variable NAMES only, for example `Get-ChildItem Env: | Where-Object Name -match 'AGILA|POSTGRES' | Select-Object Name`. Never print a value.
+9. **Start every session from a shell without the project's variables loaded.** Check with the command in rule 8: it must print nothing; if any name appears, stop and tell Eo. The cause on 2026-10-24 was the VS Code setting `python.terminal.useEnvFile`, which loaded `.env` into new terminals; it is now off.
+
 ## Versioning (two files per artifact, at most)
 - `research_latest.md` (active) and `research_prev.md` (backup); `plan_latest.md` and `plan_prev.md`.
 - Before a major edit: copy `*_latest.md` over `*_prev.md`, then edit `*_latest.md` only. The older backup is overwritten (only two versions exist).

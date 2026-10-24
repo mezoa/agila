@@ -42,7 +42,8 @@ from agila.library import (
 from agila.questions import ask_question
 from agila.retrieval import PROVISIONAL_MIN_SIMILARITY, search
 
-HOST = "127.0.0.1"  # FR26; inside Docker (block k) the publish must stay 127.0.0.1:8000:8000
+HOST = "127.0.0.1"  # FR26; the default when AGILA_HOST is unset
+HOST_VARIABLE = "AGILA_HOST"  # the container sets 0.0.0.0; Compose publishes only 127.0.0.1:8000
 PORT = 8000
 KEY_HEADER = "X-API-Key"
 KEY_VARIABLE = "AGILA_API_KEY"
@@ -198,7 +199,7 @@ def main(run: Callable[..., None] | None = None) -> int:
         import uvicorn
 
         run = uvicorn.run
-    run(app, host=HOST, port=PORT)
+    run(app, host=os.environ.get(HOST_VARIABLE) or HOST, port=PORT)
     return 0
 
 

@@ -186,3 +186,29 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - The CLI (replaces `agila.ingest`; same commands): `uv run --env-file .env python -m agila.cli --help` lists text, markdown, url, list, search, ask, evaluate, archive, unarchive, delete. `... agila.cli list` printed the 4 saved pages. `... agila.cli evaluate` -> "The evaluate command is not built yet; it comes with the golden set in block l." (exit 1). `... agila.cli ask "QUESTION"` writes one `query_log` row with channel `cli` (tested, not run by hand today)
 - The API: add `AGILA_API_KEY=<a long random value>` to `.env` (Eo; not done yet on 2026-10-23), then `uv run --env-file .env python -m agila.api`. Without the key it prints "Missing environment variable AGILA_API_KEY. Add it to .env and run: uv run --env-file .env python -m agila.api" (exit 1, checked)
 - Live check 2026-10-23 with a throwaway key set only in the shell (`AGILA_API_KEY=... uv run --env-file .env python -m agila.api`): netstat showed only `127.0.0.1:8000` LISTENING; `GET /health` (no key) -> `{"database":"ok","ollama":"ok"}` HTTP 200; `GET /docs` -> 200; `GET /documents` without a key -> 401 `{"detail":"Missing or wrong API key."}` with `www-authenticate: APIKey`; with a wrong key -> 401; `ollama ps` (empty before startup) showed `qwen3.5:4b` with context 8192 and "29 minutes from now" about 20 s after startup with no ask (warm-up). No ask was sent to the real database
+
+## RAM with the stack running (research V78, measured 2026-10-23, one sample each, MB)
+- Ollama with `qwen3.5:4b` loaded: runner `llama-server.exe` 2,474 working set (5,794 private bytes; `ollama ps` SIZE 3.9 GB, 54%/46% CPU/GPU), `ollama.exe serve` 67, `ollama app.exe` 58
+- Postgres `agila-db-1` idle: 68 (`docker stats` 68.36 MiB)
+- n8n `n8nio/n8n:2.43.6`, 75 s idle (started for the check, then stopped): 444 (`docker stats` 444.3 MiB)
+- Docker's WSL VM `vmmemWSL`: 1,815 (it holds the containers; do not add Postgres and n8n on top of it)
+- uvicorn idle, bare probe app: 55 (private 41) plus 5 for the `uv run` wrapper; uvicorn idle with Agila's embedder loaded: 216 (private 545)
+- Laptop: 20,332 total, 4,139 free with the model, Postgres, the Docker VM and other apps running
+- Commands: `Get-Process` (working set and private bytes), `docker stats --no-stream`, `Get-CimInstance Win32_OperatingSystem`
+
+## Day 8 (2026-10-24), block k: API in Docker, health check, backup and restore test
+- Base image (Eo's pull, 2026-10-24): `docker pull python:3.12-slim-bookworm` -> `Digest: sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70`; `docker run --rm python:3.12-slim-bookworm python -V` -> `Python 3.12.15`. The Dockerfile pins `python:3.12-slim-bookworm@sha256:6a0e06f5...` (the tag Eo pulled; the digest decides what is used)
+- uv image (Eo's pull): `docker pull ghcr.io/astral-sh/uv:0.12.17` -> `Digest: sha256:10787c682e4184e4f290de1171fd4703dc63de99221f10fe1c99002ce7fa9acc`; pinned the same way in the Dockerfile
+- New files: `Dockerfile`, `.dockerignore`, `scripts/healthcheck.py`, `scripts/backup.py`, `scripts/restore_test.py`, `tests/test_healthcheck.py`, `tests/test_backup_restore.py`; changed: `compose.yaml` (`api` service), `.gitignore` (`backups/`), `src/agila/llm.py` (`OLLAMA_URL`), `src/agila/api.py` (`AGILA_HOST`)
+- Tests: `uv run ruff check .` -> All checks passed; `uv run pytest` -> 407 passed, 80 deselected; `uv run --env-file .env pytest -m db` -> 79 passed
+- One-time model prefetch for a fresh clone (needs the network once; the container runs with `HF_HUB_OFFLINE=1` and cannot download): `uv sync`, then `uv run python -c "from fastembed import TextEmbedding; from agila.chunking import MODEL_NAME, CACHE_DIR; TextEmbedding(MODEL_NAME, cache_dir=str(CACHE_DIR)); print('model cached')"` -> `model cached`. Run 2026-10-24 with the cache already present (so the download itself was not exercised; block v's fresh-clone test does that)
+- Restore guard by hand: `uv run python scripts/restore_test.py --target agila` -> `Restore test refused: Refusing to restore into "agila": the test only uses agila_restore_test.`, exit 1, no docker command run
+- Hand run by Eo, 2026-10-24 (plan block k commands 4 to 20, all passed):
+  - Image `agila-api`: 631 MB on disk (155 MB compressed). Base `python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70` (Python 3.12.15); uv `ghcr.io/astral-sh/uv:0.12.17@sha256:10787c682e4184e4f290de1171fd4703dc63de99221f10fe1c99002ce7fa9acc`, `/uv` path right. `docker compose up -d --build`: build 26.6 s with uv's package cache cold
+  - Start time: after `docker compose stop api` then `docker compose start api`, healthy again after 12 s (the very first start was not timed)
+  - `docker compose config --quiet` -> exit 0; `docker compose config | Select-String "published|host_ip|127.0.0.1"` -> both published ports (5433, 8000) on `host_ip: 127.0.0.1`
+  - The image has no `.env` and only the named files; U24 inside the image with `--network none`: `2130706433`, `0x7f.0.0.1`, `127.1`, `0177.0.0.1` all gave `127.0.0.1`
+  - The read-only model mount works with `HF_HUB_OFFLINE=1` (`:ro` stays); fastembed logs a harmless `Local file sizes do not match the metadata` warning
+  - `/ask` through the container: an answer with a program-copied citation, 8.5 s warm. Ollama stopped: `/health` 503 naming Ollama in 0.06 s, `api` stayed healthy for 25+ minutes, `/ask` returned kind `passages` with a note
+  - `uv run python scripts/backup.py` -> 137,807 bytes, documents 4, chunks 50. `uv run python scripts/restore_test.py` -> 4 = 4, 50 = 50, passed, `agila_restore_test` dropped; `--target agila` refused; the real library still 4 documents and 50 chunks
+  - Stop the api without touching the database: `docker compose stop api`, then `docker compose start api`; the `pgdata` volume stayed. Never `docker compose down -v`

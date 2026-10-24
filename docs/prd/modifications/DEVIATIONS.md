@@ -1,4 +1,4 @@
-# Deviations from PRD Draft 3.3 (as of 2026-10-23, Day 7, blocks g to j built)
+# Deviations from PRD Draft 3.3 (as of 2026-10-24, Day 8, blocks g to j built)
 
 Kinds: **Temporary** (matches the PRD later), **Gap filled** (PRD silent or marked assumed), **Refinement** (a choice inside what the PRD allows), **Conflict** (needs a decision), **Schedule**.
 "Amended" = already written into `PRD-draft-3.3-amended.md`.
@@ -49,3 +49,4 @@ Housekeeping: the first line of `docs/decisions.md` said "PRD Draft 3.2 is the a
 | 40 | Delete over the API | FR20: delete a document and its chunks; the CLI has a dry run without `--yes` | **Resolved 2026-10-23 (Eo):** `DELETE /documents/{id}` needs `confirm=true`; without it the reply gives title, type, saved date and chunk count and nothing is deleted (the CLI's `--yes` rule); an unknown id is 404 "No document with id N.". Was (assumed): deleted at once, no dry run | Gap filled, resolved | Done 2026-10-23 | plan_latest.md "Block j plan", decisions.md "API and query log" |
 | 41 | `evaluate` command | FR25 lists evaluate; FR33 builds it | A stub that prints "The evaluate command is not built yet; it comes with the golden set in block l." and exits 1 | Temporary | Block l | plan_latest.md "Block j plan" |
 | 42 | API key variable | FR26: a secret key in a header | The key is `AGILA_API_KEY` in `.env` (listed empty in `.env.example`); without it the API refuses to start with one sentence | Gap filled | n/a | plan_latest.md "Block j plan" |
+| 43 | Gate 1 date | PRD section 5: Gate 1 on Day 9; "if Gate 1 is not met by the end of Day 10", the drop order starts | Moved to Day 11 on 2026-10-22 (after block g took Day 6; not recorded here then), **moved back to Day 9 on 2026-10-23 by Eo**, with Day 10 as slack. Day numbers count working days (plan_latest.md Gate 1 note) | Schedule (now matches the PRD) | Gate 1 | plan_latest.md Tier 1 "Gate 1" line |

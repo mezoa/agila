@@ -1,0 +1,20 @@
+# Kept out of the image build (V87). The Dockerfile also copies only named files, never `COPY . .`.
+# secrets
+.env
+.env.*
+
+# local environment, caches and data (the model cache is mounted at run time, not copied)
+.venv
+.cache
+raw
+backups
+__pycache__
+.pytest_cache
+.ruff_cache
+
+# not needed to run the API
+.git
+tests
+docs
+.vscode
+.obsidian

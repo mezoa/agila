@@ -135,9 +135,19 @@ def test_main_prints_one_sentence_without_a_key(monkeypatch, capsys):
 
 def test_main_serves_on_loopback_port_8000(monkeypatch):
     monkeypatch.setenv("AGILA_API_KEY", KEY)
+    monkeypatch.delenv("AGILA_HOST", raising=False)
     seen = {}
     assert api.main(run=lambda app, **kwargs: seen.update(kwargs)) == 0
     assert seen == {"host": "127.0.0.1", "port": 8000}
+
+
+def test_main_listens_on_agila_host_when_it_is_set(monkeypatch):
+    # The container sets 0.0.0.0; Compose still publishes only 127.0.0.1:8000 (V81)
+    monkeypatch.setenv("AGILA_API_KEY", KEY)
+    monkeypatch.setenv("AGILA_HOST", "0.0.0.0")
+    seen = {}
+    assert api.main(run=lambda app, **kwargs: seen.update(kwargs)) == 0
+    assert seen == {"host": "0.0.0.0", "port": 8000}
 
 
 # --- open pages: /health and /docs ---

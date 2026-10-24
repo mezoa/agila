@@ -232,11 +232,36 @@ def test_a_failed_warm_up_is_logged_and_never_raised(handler, caplog):
     assert "warm-up failed" in caplog.records[0].getMessage()
 
 
-def test_the_ollama_check_asks_for_the_version_only():
+def test_the_ollama_check_asks_for_the_version_only(monkeypatch):
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
     seen = []
     version = _transport(lambda r: httpx.Response(200, json={"version": "0.40.8"}), seen)
     assert llm.check_ollama(transport=version) is None
     assert (seen[0].method, str(seen[0].url)) == ("GET", "http://127.0.0.1:11434/api/version")
+
+
+# --- block k: the Ollama address from the environment (V82) ---
+
+
+def test_the_ollama_address_defaults_to_this_laptop(monkeypatch):
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    assert llm.base_url() == "http://127.0.0.1:11434"
+    monkeypatch.setenv("OLLAMA_URL", "")
+    assert llm.base_url() == "http://127.0.0.1:11434"
+
+
+def test_the_ollama_address_comes_from_ollama_url(monkeypatch):
+    monkeypatch.setenv("OLLAMA_URL", "http://host.docker.internal:11434/")
+    seen = []
+    version = _transport(lambda r: httpx.Response(200, json={"version": "0.40.8"}), seen)
+    assert llm.check_ollama(transport=version) is None
+    llm.chat([{"role": "user", "content": "Hi"}], transport=_transport(_ok(), seen))
+    llm.warm_up(transport=_transport(_ok(), seen))
+    assert [str(r.url) for r in seen] == [
+        "http://host.docker.internal:11434/api/version",
+        "http://host.docker.internal:11434/api/chat",
+        "http://host.docker.internal:11434/api/chat",
+    ]
 
 
 @pytest.mark.parametrize(

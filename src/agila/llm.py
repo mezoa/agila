@@ -11,6 +11,7 @@ reply, the retry and the fallback live in `ask.py`. Block j adds the warm-up (V7
 
 import json
 import logging
+import os
 import re
 import threading
 from collections.abc import Iterator, Sequence
@@ -23,7 +24,8 @@ from agila.retrieval import Passage
 from agila.sentences import split_sentences
 
 MODEL = "qwen3.5:4b"
-BASE_URL = "http://127.0.0.1:11434"  # [assumed] made configurable for the container in block k
+BASE_URL = "http://127.0.0.1:11434"  # Ollama on this laptop; the default when OLLAMA_URL is unset
+URL_VARIABLE = "OLLAMA_URL"  # the container sets http://host.docker.internal:11434 (V82)
 NUM_CTX = 8192
 KEEP_ALIVE = "30m"
 TEMPERATURE = 0  # same request, same reply (V63)
@@ -52,6 +54,12 @@ OLLAMA_SLOW = (
     " passages. Check Ollama."
 )
 OLLAMA_ERROR = "Ollama answered the health check with an error. Check Ollama."
+
+
+def base_url() -> str:
+    """OLLAMA_URL if set, else Ollama on this laptop. Read at each call so tests can set it."""
+    return (os.environ.get(URL_VARIABLE) or BASE_URL).rstrip("/")
+
 
 # FR12. Kept flat and inline: the shape tested against the real model (V59).
 ANSWER_SCHEMA = {
@@ -161,7 +169,7 @@ def chat(messages: list[dict], transport: httpx.BaseTransport | None = None) -> 
     """One `POST /api/chat`. Raises ModelError with the sentence for each failure (V65)."""
     try:
         with httpx.Client(transport=transport, timeout=TIMEOUT_SECONDS, trust_env=False) as client:
-            response = client.post(f"{BASE_URL}/api/chat", json=request_body(messages))
+            response = client.post(f"{base_url()}/api/chat", json=request_body(messages))
     except httpx.TimeoutException as exc:  # before ConnectError: a connect timeout is both
         raise ModelError(TIMED_OUT, timed_out=True) from exc
     except httpx.ConnectError as exc:
@@ -193,7 +201,7 @@ def warm_up(transport: httpx.BaseTransport | None = None) -> None:
     is queued by Ollama, V67); a failure is logged, never raised."""
     try:
         with httpx.Client(transport=transport, timeout=TIMEOUT_SECONDS, trust_env=False) as client:
-            response = client.post(f"{BASE_URL}/api/chat", json=warm_up_body())
+            response = client.post(f"{base_url()}/api/chat", json=warm_up_body())
         response.raise_for_status()
     except httpx.HTTPError as exc:
         name = type(exc).__name__
@@ -205,7 +213,7 @@ def check_ollama(transport: httpx.BaseTransport | None = None) -> str | None:
     else one sentence."""
     try:
         with httpx.Client(transport=transport, timeout=CHECK_SECONDS, trust_env=False) as client:
-            response = client.get(f"{BASE_URL}/api/version")
+            response = client.get(f"{base_url()}/api/version")
     except httpx.TimeoutException:  # before ConnectError: a connect timeout is both
         return OLLAMA_SLOW
     except httpx.ConnectError:

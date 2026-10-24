@@ -16,5 +16,36 @@ services:
       retries: 10
     restart: unless-stopped
 
+  api:
+    build: .
+    # Only the values the API needs, named one by one (V81); `.env` itself never enters the image.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"  # the port inside the Compose network, not the laptop's 5433
+      AGILA_API_KEY: ${AGILA_API_KEY:?Add AGILA_API_KEY to .env}
+      AGILA_HOST: 0.0.0.0  # inside the container; the publish below keeps it on 127.0.0.1
+      OLLAMA_URL: http://host.docker.internal:11434
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      # The model from the laptop (V84). Fresh clone: run the one-time prefetch in setup-log first.
+      # Read-only first (Eo, K2); switch to read-write only if fastembed needs to write (U46).
+      - ./.cache/fastembed:/app/.cache/fastembed:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Healthy while the database answers, also with Ollama down (V83)
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+
 volumes:
   pgdata:
