@@ -3,6 +3,7 @@
     uv run --env-file .env python -m agila.cli text --title T --label L [--file PATH] [--replace]
     uv run --env-file .env python -m agila.cli markdown PATH [--title T] [--label L] [--replace]
     uv run --env-file .env python -m agila.cli url URL [--title T] [--replace]
+    uv run --env-file .env python -m agila.cli pdf PATH [--title T] [--label L] [--replace]
     uv run --env-file .env python -m agila.cli list
     uv run --env-file .env python -m agila.cli archive ID
     uv run --env-file .env python -m agila.cli unarchive ID
@@ -36,6 +37,7 @@ from agila.library import (
     document_info,
     list_documents,
     save_markdown,
+    save_pdf,
     save_text,
     save_url,
     unarchive,
@@ -81,6 +83,11 @@ def _parser() -> argparse.ArgumentParser:
     url.add_argument("url")
     url.add_argument("--title", help="title (default: the page title, else the link)")
     url.add_argument("--replace", action="store_true", help=replace_help)
+    pdf = sub.add_parser("pdf", help="save a text PDF page by page (not a scan)")
+    pdf.add_argument("path", type=Path)
+    pdf.add_argument("--title", help="title (default: the file name without .pdf)")
+    pdf.add_argument("--label", help="source label (default: the file name)")
+    pdf.add_argument("--replace", action="store_true", help=replace_help)
     sub.add_parser("list", help="list documents with id, date, status, visibility and title")
     find = sub.add_parser("search", help="show up to 3 saved passages close to a question")
     find.add_argument("question")
@@ -144,7 +151,10 @@ def _search(conn: psycopg.Connection, question: str, min_similarity: float) -> l
     lines = []
     for number, p in enumerate(result.passages, 1):
         saved = _date(p.saved_at)
-        lines.append(f"{number}. {p.similarity:.2f}  {p.title}  ({p.source}, saved {saved})")
+        page = f", PDF page {p.page}" if p.page is not None else ""
+        lines.append(
+            f"{number}. {p.similarity:.2f}  {p.title}  ({p.source}{page}, saved {saved})"
+        )
         if p.heading:
             lines.append(f"   Section: {p.heading}")
         text = " ".join(p.text.split())
@@ -177,7 +187,7 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
         return evaluate.main(argv[1:])
     args = _parser().parse_args(argv)
     try:
-        if args.command == "markdown" and not args.path.is_file():
+        if args.command in ("markdown", "pdf") and not args.path.is_file():
             raise SaveError(f"File not found: {args.path}")
         if args.command == "text":
             if args.file is not None and not args.file.is_file():
@@ -192,6 +202,9 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
                     name = args.title
                 elif args.command == "url":
                     saved = save_url(conn, args.url, args.title, replace=args.replace)
+                    name = saved.title
+                elif args.command == "pdf":
+                    saved = save_pdf(conn, args.path, args.title, args.label, replace=args.replace)
                     name = saved.title
                 else:
                     saved = save_markdown(

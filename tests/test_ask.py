@@ -206,8 +206,15 @@ def test_a_real_heading_and_page_are_shown():
     assert format_answer(result) == (
         "The second sentence has it.\n\nSources:\n"
         '1. "The second sentence holds the answer."\n'
-        f"   llm-wiki - Setup (https://example.test, page 4, saved {saved})"
+        f"   llm-wiki - Setup (https://example.test, PDF page 4, saved {saved})"
     )
+
+
+def test_the_passages_view_shows_the_pdf_page():
+    result = answer("q", [_passage(11, page=12)], model=ScriptedModel(llm.ModelError("down")))
+    saved = SAVED.astimezone().strftime("%Y-%m-%d")
+    line = f"1. llm-wiki (https://example.test, PDF page 12, saved {saved})"
+    assert line in format_answer(result)
 
 
 def test_a_refusal_formats_as_its_sentence():

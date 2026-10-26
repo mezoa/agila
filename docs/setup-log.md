@@ -223,3 +223,14 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Rerun commands for later: `eval/README.md`. Results: `eval/report.md`
 - Gate 1 cleanup (2026-10-26): deleted `scripts/ollama_spike.py` and `tests/test_ollama_spike.py` (replaced by `llm.py`; no live references left)
 - Secret scan (2026-10-26): git log for .env empty, only .env.example tracked, gitleaks (ghcr.io/gitleaks/gitleaks:latest, digest sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f) scanned 33 commits, no leaks found.
+
+## Day 10 (2026-10-26), block m: text PDFs with page numbers (commands run by Eo; results as Eo reported them)
+- Add the package: `uv add pypdf==6.21.2` -> only `pyproject.toml` and `uv.lock` changed; `uv run python -c "import pypdf; print(pypdf.__version__)"` -> `6.21.2`
+- Tests: `uv run ruff check .` -> All checks passed; `uv run pytest` -> 542 passed; `uv run --env-file .env pytest -m db` -> 95 passed
+- Rebuild the image: `docker compose up -d --build`, then `docker compose ps` (`api` healthy) and `curl.exe -s http://127.0.0.1:8000/health` -> `{"database":"ok","ollama":"ok"}`
+- U60, pypdf inside the container: `docker compose exec api python -c "import pypdf; print(pypdf.__version__)"` -> `6.21.2`
+- Save a PDF: `uv run --env-file .env python -m agila.cli pdf eval\library\pdf\csu-core-manual.pdf` (same for `ttlo-thesis.pdf` and `gadget-manual.pdf`) -> 187, 217 and 72 passages; `... agila.cli list` shows them
+- Scanned PDF: `... agila.cli pdf eval\library\pdf\scanned-sample.pdf; $LASTEXITCODE` -> `scanned-sample.pdf has almost no text (it looks scanned or empty); Agila saves text PDFs only.` and `1`; nothing saved
+- Same PDF again: `... agila.cli pdf eval\library\pdf\gadget-manual.pdf` -> `Already saved, unchanged: gadget-manual (document <id>).`
+- Page numbers: `... agila.cli ask "QUESTION"` on the three manuals; each cited `PDF page N` checked in a PDF viewer by its page box (not the printed number): pages 33, 10, 9 and 10, quote found on each
+- Database check: `"select source_type, count(*), count(page_count) from documents group by 1 order by 1;" | docker compose exec -T db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -At'` and `"select count(*), count(c.page) from chunks c join documents d on d.id = c.document_id where d.source_type = 'pdf';" | docker compose exec -T db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -At'` -> 72 of 72 and 476 of 476 (every PDF chunk has a page)

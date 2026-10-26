@@ -1,5 +1,5 @@
-"""Save pasted text, Markdown or a web page as one document with chunks and vectors; list,
-archive, unarchive and delete documents."""
+"""Save pasted text, Markdown, a web page or a text PDF as one document with chunks and vectors;
+list, archive, unarchive and delete documents."""
 
 import hashlib
 import re
@@ -11,13 +11,14 @@ from pathlib import Path
 import psycopg
 from psycopg import errors
 
-from agila.chunking import FRONT_MATTER, chunk_document
+from agila.chunking import FRONT_MATTER, Chunk, chunk_document
 from agila.embed import Embedder, embed_chunks
+from agila.pdf import PdfError, read_pdf
 from agila.urls import UrlError, normalize_url
 from agila.web import WebError, extract_page, fetch_html
 
 ACTIVE_IDENTITY_INDEX = "documents_active_identity"
-MAX_WEB_CHUNKS = 200  # FR2 [assumed]: web pages needing more are refused (text and Markdown not)
+MAX_WEB_CHUNKS = 200  # FR2 [assumed]: web pages needing more are refused (text, Markdown, PDF not)
 H1 = re.compile(r"^#[ \t]+(.*\S)[ \t]*$")
 
 
@@ -54,7 +55,8 @@ class DocumentInfo:
 @dataclass(frozen=True)
 class Saved:
     """`outcome` is "saved", "unchanged" (identical content already active, nothing written) or
-    "replaced" (the older active copies in `replaced_ids` are now superseded)."""
+    "replaced" (the older active copies in `replaced_ids` are now superseded). `page_count` is
+    set for a PDF only."""
 
     document_id: int
     chunk_count: int
@@ -62,13 +64,15 @@ class Saved:
     outcome: str = "saved"
     replaced_ids: tuple[int, ...] = ()
     warning: str | None = None
+    page_count: int | None = None
 
 
 def describe(saved: Saved, name: str | None = None) -> str:
     """The one-sentence result of a save; a warning, if any, is printed on its own line."""
     if saved.outcome == "unchanged":
         return f"Already saved, unchanged: {saved.title} (document {saved.document_id})."
-    sentence = f"Saved {name or saved.title}: {saved.chunk_count} chunks"
+    pages = f"{saved.page_count} pages, " if saved.page_count is not None else ""
+    sentence = f"Saved {name or saved.title}: {pages}{saved.chunk_count} chunks"
     if saved.replaced_ids:
         sentence += f". It replaces {_documents(saved.replaced_ids)}, now superseded."
     return sentence
@@ -149,6 +153,29 @@ def save_url(
     )
 
 
+def save_pdf(
+    conn: psycopg.Connection,
+    path: Path,
+    title: str | None = None,
+    source_label: str | None = None,
+    embedder: Embedder | None = None,
+    replace: bool = False,
+) -> Saved:
+    """FR3: save a text PDF page by page; every chunk keeps its PDF page number (1-based).
+
+    Title defaults to the file name without extension, the source label to the file name. The
+    checks and the cleaning live in `pdf.read_pdf`; a refused file saves nothing. No chunk cap.
+    """
+    path = Path(path)
+    try:
+        pages = read_pdf(path)
+    except PdfError as exc:
+        raise SaveError(str(exc)) from exc
+    title = (title or "").strip() or path.stem
+    label = (source_label or "").strip() or path.name
+    return _save(conn, title, label, "pdf", "", False, embedder, pages=pages, replace=replace)
+
+
 def _first_heading(markdown: str) -> str | None:
     in_fence = False
     for line in FRONT_MATTER.sub("", markdown.replace("\r\n", "\n"), count=1).split("\n"):
@@ -173,6 +200,7 @@ def _save(
     source_url: str | None = None,
     normalized_url: str | None = None,
     max_chunks: int | None = None,
+    pages: list[str] | None = None,
     replace: bool = False,
 ) -> Saved:
     """FR7 and FR8: compare with the active copies, chunk and embed, then write in ONE transaction.
@@ -184,7 +212,12 @@ def _save(
     page, or any save with `replace`: every active copy with the same identity is superseded
     BEFORE the insert (the web-only unique index would refuse the new row otherwise). A text or
     Markdown note with the label of another active note is kept beside it, with a warning.
+    A PDF passes its cleaned `pages` instead of `text`: the hash covers them joined with a form
+    feed, each page is chunked on its own, and `page` and `page_count` are written.
     """
+    page_count = len(pages) if pages is not None else None
+    if pages is not None:
+        text = "\f".join(pages)
     text = text.replace("\r\n", "\n")
     identity_key = identity_key or f"{source_type}:{label}"
     content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -201,7 +234,11 @@ def _save(
         return unchanged
 
     try:
-        chunks = chunk_document(title, text, is_markdown)
+        if pages is None:
+            chunks = chunk_document(title, text, is_markdown)
+            chunk_pages: list[int | None] = [None] * len(chunks)
+        else:
+            chunks, chunk_pages = _page_chunks(title, pages)
         if not chunks:
             raise SaveError(f"Nothing to save: no text found in {label}.")
         if max_chunks is not None and len(chunks) > max_chunks:  # before the slow embedding
@@ -224,8 +261,8 @@ def _save(
                 )
             document_id = conn.execute(
                 "INSERT INTO documents (space_id, title, source_label, source_url,"
-                " normalized_url, source_type, identity_key, content_hash, supersedes_id)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                " normalized_url, source_type, identity_key, content_hash, supersedes_id,"
+                " page_count) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
                 (
                     _default_space(conn),
                     title,
@@ -236,15 +273,16 @@ def _save(
                     identity_key,
                     content_hash,
                     replaced_ids[0] if replaced_ids else None,  # the newest old copy
+                    page_count,
                 ),
             ).fetchone()[0]
             with conn.cursor() as cur:
                 cur.executemany(
-                    "INSERT INTO chunks (document_id, position, heading, text, embedding)"
-                    " VALUES (%s, %s, %s, %s, %s)",
+                    "INSERT INTO chunks (document_id, position, heading, page, text, embedding)"
+                    " VALUES (%s, %s, %s, %s, %s, %s)",
                     [
-                        (document_id, c.position, c.heading or None, c.text, vector)
-                        for c, vector in zip(chunks, vectors, strict=True)
+                        (document_id, c.position, c.heading or None, page, c.text, vector)
+                        for c, page, vector in zip(chunks, chunk_pages, vectors, strict=True)
                     ],
                 )
     except errors.UniqueViolation as exc:
@@ -263,8 +301,24 @@ def _save(
             f"Saving {label} failed ({type(exc).__name__}); nothing was saved."
         ) from exc
     if replaced_ids:
-        return Saved(document_id, len(chunks), title, "replaced", replaced_ids)
-    return Saved(document_id, len(chunks), title, warning=_label_warning(label, same))
+        return Saved(
+            document_id, len(chunks), title, "replaced", replaced_ids, page_count=page_count
+        )
+    return Saved(
+        document_id, len(chunks), title, warning=_label_warning(label, same), page_count=page_count
+    )
+
+
+def _page_chunks(title: str, pages: list[str]) -> tuple[list[Chunk], list[int]]:
+    """FR3: chunk each page on its own, so every chunk has exactly one PDF page (1-based);
+    `position` runs across the whole document. A blank page gets no chunk."""
+    chunks: list[Chunk] = []
+    numbers: list[int] = []
+    for number, page in enumerate(pages, 1):
+        for c in chunk_document(title, page, False):
+            chunks.append(Chunk(position=len(chunks), heading=c.heading, text=c.text))
+            numbers.append(number)
+    return chunks, numbers
 
 
 def _default_space(conn: psycopg.Connection) -> int:

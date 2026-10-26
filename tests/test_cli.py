@@ -35,6 +35,47 @@ def test_missing_variable_is_named_without_a_traceback(tmp_path, monkeypatch, ca
     assert "Traceback" not in out
 
 
+def _never_connect():
+    raise AssertionError("the database was opened")
+
+
+def test_missing_pdf_prints_one_sentence_before_any_database(tmp_path, capsys):
+    code = cli.main(["pdf", str(tmp_path / "nope.pdf")], connect=_never_connect)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert out.startswith("File not found:")
+    assert "Traceback" not in out
+
+
+def test_pdf_command_passes_title_and_label_and_prints_pages(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "manual.pdf"
+    path.write_bytes(b"%PDF-")  # never read: save_pdf is a fake here
+    calls = []
+
+    def fake(conn, given, title=None, label=None, replace=False):
+        calls.append((given, title, label, replace))
+        return library.Saved(7, 5, "My manual", page_count=3)
+
+    monkeypatch.setattr(cli, "save_pdf", fake)
+    argv = ["pdf", str(path), "--title", "My manual", "--label", "m.pdf"]
+    assert cli.main(argv, connect=_no_database) == 0
+    assert calls == [(path, "My manual", "m.pdf", False)]
+    assert capsys.readouterr().out == "Saved My manual: 3 pages, 5 chunks\n"
+
+
+def test_a_refused_pdf_prints_its_sentence_and_exits_1(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "scan.pdf"
+    path.write_bytes(b"%PDF-")
+    sentence = "scan.pdf has almost no text (it looks scanned or empty); save text PDFs only."
+
+    def refuse(*args, **kwargs):
+        raise library.SaveError(sentence)
+
+    monkeypatch.setattr(cli, "save_pdf", refuse)
+    assert cli.main(["pdf", str(path)], connect=_no_database) == 1
+    assert capsys.readouterr().out == sentence + "\n"
+
+
 def test_text_command_needs_title_and_label():
     with pytest.raises(SystemExit):
         cli.main(["text", "--title", "T"])
@@ -176,6 +217,7 @@ def test_a_document_id_must_be_a_whole_number(bad):
         (["text", "--title", "T", "--label", "L", "--replace"], "save_text"),
         (["markdown", "NOTE", "--replace"], "save_markdown"),
         (["url", "https://example.test/a", "--replace"], "save_url"),
+        (["pdf", "NOTE", "--replace"], "save_pdf"),
     ],
 )
 def test_replace_flag_reaches_the_library(argv, name, tmp_path, monkeypatch, capsys):
@@ -237,6 +279,18 @@ def test_search_command_prints_passages_with_score_title_and_source(monkeypatch,
     assert lines[2].endswith("...") and len(lines[2]) == 3 + 300 + 3
     assert lines[3].startswith("2. 0.72  llm-wiki")
     assert lines[4] == "   Short passage text."
+
+
+def test_search_command_shows_the_pdf_page(monkeypatch, capsys):
+    pdf_passage = retrieval.Passage(
+        12, "Text on a manual page.", None, 38, "ttlo-thesis", "ttlo-thesis.pdf",
+        datetime(2026, 10, 21, 9, 0, tzinfo=UTC), 0.8,
+    )
+    monkeypatch.setattr(cli, "search", lambda conn, q, *, min_similarity: _result([pdf_passage]))
+    assert cli.main(["search", "A question?"], connect=_no_database) == 0
+    saved = datetime(2026, 10, 21, 9, 0, tzinfo=UTC).astimezone().strftime("%Y-%m-%d")
+    first = capsys.readouterr().out.splitlines()[0]
+    assert first == f"1. 0.80  ttlo-thesis  (ttlo-thesis.pdf, PDF page 38, saved {saved})"
 
 
 def test_search_command_says_nothing_close_enough_with_the_score(monkeypatch, capsys):

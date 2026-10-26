@@ -3,10 +3,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from pdfs import locked_pdf, text_pdf
 
 from agila import library
 from agila.chunking import CACHE_DIR, Chunk, default_counter, embedded_text
 from agila.library import SaveError, describe, save_markdown, save_text, save_url
+from agila.pdf import read_pdf
 from agila.web import FetchError
 
 pytestmark = [
@@ -494,3 +496,126 @@ def test_deleting_an_old_version_clears_the_link_from_the_new_one(conn):
     new = save_text(conn, "T", "L", "Second version.", FakeEmbedder(), replace=True)
     library.delete_document(conn, old.document_id)
     assert _status(conn, new.document_id) == ("active", None)
+
+
+# --- save_pdf (block m): PDFs are built in the test (tests/pdfs.py), never a real manual ---
+
+PAGE_ONE = "Alpha page one tells how the manual starts. " * 3
+PAGE_THREE = "Gamma page three tells how the manual ends. " * 3
+LONG_PAGE = " ".join(
+    f"Sentence number {i} is about the long page of this manual." for i in range(80)
+)
+
+
+def _pdf(tmp_path, pages, name="manual.pdf"):
+    path = tmp_path / name
+    path.write_bytes(text_pdf(pages))
+    return path
+
+
+def _chunk_pages(conn, document_id):
+    return conn.execute(
+        "SELECT position, page, text FROM chunks WHERE document_id = %s ORDER BY position",
+        (document_id,),
+    ).fetchall()
+
+
+def test_save_pdf_stores_a_pdf_document_with_page_numbers(conn, tmp_path):
+    path = _pdf(tmp_path, [PAGE_ONE, PAGE_THREE, PAGE_ONE])
+    saved = library.save_pdf(conn, path, embedder=FakeEmbedder())
+    doc = conn.execute(
+        "SELECT title, source_label, source_type, identity_key, page_count FROM documents"
+        " WHERE id = %s",
+        (saved.document_id,),
+    ).fetchone()
+    assert doc == ("manual", "manual.pdf", "pdf", "pdf:manual.pdf", 3)
+    rows = _chunk_pages(conn, saved.document_id)
+    assert [position for position, _, _ in rows] == list(range(len(rows)))
+    assert all(page is not None for _, page, _ in rows)
+    assert {page for _, page, text in rows if "Gamma page three" in text} == {2}
+    assert saved.page_count == 3
+    assert describe(saved) == f"Saved manual: 3 pages, {saved.chunk_count} chunks"
+
+
+def test_a_long_page_keeps_its_page_and_a_blank_page_shifts_nothing(conn, tmp_path):
+    path = _pdf(tmp_path, [LONG_PAGE, "", PAGE_THREE])
+    saved = library.save_pdf(conn, path, embedder=FakeEmbedder())
+    rows = _chunk_pages(conn, saved.document_id)
+    pages = [page for _, page, _ in rows]
+    assert pages.count(1) >= 2  # the long page needed more than one chunk
+    assert 2 not in pages  # the blank page has no chunk
+    assert pages[-1] == 3 and "Gamma page three" in rows[-1][2]
+    assert [position for position, _, _ in rows] == list(range(len(rows)))
+
+
+def test_the_pdf_hash_covers_the_cleaned_pages_joined_with_a_form_feed(conn, tmp_path):
+    path = _pdf(tmp_path, [PAGE_ONE, "", PAGE_THREE])
+    saved = library.save_pdf(conn, path, embedder=FakeEmbedder())
+    (stored,) = conn.execute(
+        "SELECT content_hash FROM documents WHERE id = %s", (saved.document_id,)
+    ).fetchone()
+    assert stored == hashlib.sha256("\f".join(read_pdf(path)).encode("utf-8")).hexdigest()
+
+
+def test_the_same_pdf_saved_twice_is_unchanged(conn, tmp_path):
+    path = _pdf(tmp_path, [PAGE_ONE, PAGE_THREE])
+    first = library.save_pdf(conn, path, embedder=FakeEmbedder())
+    again = library.save_pdf(conn, path, embedder=FakeEmbedder())
+    assert (again.outcome, again.document_id) == ("unchanged", first.document_id)
+    assert describe(again) == f"Already saved, unchanged: manual (document {first.document_id})."
+    assert _count(conn, "documents") == 1
+    assert _count(conn, "chunks") == first.chunk_count
+
+
+def test_a_revised_pdf_is_kept_beside_the_old_one_unless_replace(conn, tmp_path):
+    path = _pdf(tmp_path, [PAGE_ONE, PAGE_THREE])
+    old = library.save_pdf(conn, path, embedder=FakeEmbedder())
+    revised = _pdf(tmp_path, ["Alpha page one now tells a different story. " * 3, PAGE_THREE])
+    beside = library.save_pdf(conn, revised, embedder=FakeEmbedder())
+    assert beside.outcome == "saved"
+    assert f'document {old.document_id} "manual"' in beside.warning
+    replaced = library.save_pdf(
+        conn, _pdf(tmp_path, [PAGE_THREE, PAGE_ONE]), embedder=FakeEmbedder(), replace=True
+    )
+    assert replaced.outcome == "replaced"
+    assert set(replaced.replaced_ids) == {old.document_id, beside.document_id}
+    assert _status(conn, old.document_id)[0] == "superseded"
+    assert _status(conn, beside.document_id)[0] == "superseded"
+
+
+@pytest.mark.parametrize("case", ["scanned", "locked", "damaged", "not a pdf"])
+def test_a_refused_pdf_saves_nothing(conn, tmp_path, case):
+    good = text_pdf([PAGE_ONE, PAGE_THREE])
+    data = {
+        "scanned": text_pdf(["", ""]),
+        "locked": locked_pdf(good),
+        "damaged": good[: len(good) // 2],
+        "not a pdf": b"plain text, not a PDF\n" * 10,
+    }[case]
+    path = tmp_path / "bad.pdf"
+    path.write_bytes(data)
+    with pytest.raises(SaveError, match="bad.pdf"):
+        library.save_pdf(conn, path, embedder=FakeEmbedder())
+    assert _count(conn, "documents") == 0
+    assert _count(conn, "chunks") == 0
+
+
+def test_a_pdf_has_no_chunk_cap(conn, tmp_path, monkeypatch):
+    monkeypatch.setattr(library, "MAX_WEB_CHUNKS", 1)
+    path = _pdf(tmp_path, [LONG_PAGE, PAGE_THREE])
+    saved = library.save_pdf(conn, path, embedder=FakeEmbedder())
+    assert saved.chunk_count >= 2
+
+
+def test_text_and_markdown_still_have_no_page(conn, tmp_path):
+    note = save_text(conn, "T", "L", "Plain words here.", FakeEmbedder())
+    md = tmp_path / "n.md"
+    md.write_text("# Note\n\nSome words.", encoding="utf-8")
+    markdown = save_markdown(conn, md, embedder=FakeEmbedder())
+    for saved in (note, markdown):
+        assert conn.execute(
+            "SELECT page_count FROM documents WHERE id = %s", (saved.document_id,)
+        ).fetchone() == (None,)
+        assert {page for _, page, _ in _chunk_pages(conn, saved.document_id)} == {None}
+        assert saved.page_count is None
+    assert describe(note) == f"Saved T: {note.chunk_count} chunks"

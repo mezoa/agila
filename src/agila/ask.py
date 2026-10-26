@@ -172,7 +172,7 @@ def format_answer(result: Answer) -> str:
     if result.kind == "answer":
         lines = [result.text, "", "Sources:"]
         for n, c in enumerate(result.citations, 1):
-            page = f", page {c.page}" if c.page is not None else ""
+            page = f", PDF page {c.page}" if c.page is not None else ""  # only PDFs have pages
             lines.append(f'{n}. "{c.quote}"')
             lines.append(
                 f"   {_where(c.title, c.section)} ({c.source}{page}, saved {_date(c.saved_at)})"
@@ -180,7 +180,7 @@ def format_answer(result: Answer) -> str:
         return "\n".join(lines)
     lines = [result.note or "", "", "Closest passages:"]
     for n, p in enumerate(result.passages, 1):
-        page = f", page {p.page}" if p.page is not None else ""
+        page = f", PDF page {p.page}" if p.page is not None else ""
         lines.append(
             f"{n}. {_where(p.title, p.heading)} ({p.source}{page}, saved {_date(p.saved_at)})"
         )
