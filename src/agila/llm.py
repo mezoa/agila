@@ -223,6 +223,19 @@ def check_ollama(transport: httpx.BaseTransport | None = None) -> str | None:
     return None if response.status_code == 200 else OLLAMA_ERROR
 
 
+def ollama_version(transport: httpx.BaseTransport | None = None) -> str | None:
+    """The running Ollama's version from `GET /api/version` (never loads the model), or None.
+
+    The evaluation records it with each answer run, since the Ollama app updates itself (V68)."""
+    try:
+        with httpx.Client(transport=transport, timeout=CHECK_SECONDS, trust_env=False) as client:
+            response = client.get(f"{base_url()}/api/version")
+        version = response.json().get("version") if response.status_code == 200 else None
+    except (httpx.HTTPError, ValueError, AttributeError):  # down, not JSON, not an object
+        return None
+    return version if isinstance(version, str) else None
+
+
 _lock = threading.Lock()
 
 

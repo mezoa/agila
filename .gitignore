@@ -20,3 +20,8 @@ backups/
 .cache/
 
 .vscode/
+eval/library/
+eval/runs/
+eval/answer-key.md
+eval/hit-phrases.txt
+package-lock.json

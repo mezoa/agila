@@ -208,7 +208,7 @@ def test_a_label_warning_is_printed_on_its_own_line(monkeypatch, capsys):
 # --- block h: cli search (search faked: no database, no model) ---
 
 
-def _result(passages, best=None, threshold=retrieval.PROVISIONAL_MIN_SIMILARITY):
+def _result(passages, best=None, threshold=retrieval.MIN_SIMILARITY):
     best = passages[0].similarity if passages and best is None else best
     return retrieval.SearchResult(passages, best, threshold)
 
@@ -230,7 +230,7 @@ def test_search_command_prints_passages_with_score_title_and_source(monkeypatch,
     monkeypatch.setattr(cli, "search", fake_search)
     assert cli.main(["search", "How do I build a wiki?"], connect=_no_database) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert calls == [("How do I build a wiki?", 0.70)]
+    assert calls == [("How do I build a wiki?", 0.68)]
     saved = datetime(2026, 10, 21, 9, 0, tzinfo=UTC).astimezone().strftime("%Y-%m-%d")
     assert lines[0] == f"1. 0.79  llm-wiki  (https://example.test/wiki, saved {saved})"
     assert lines[1] == "   Section: Setup"
@@ -244,7 +244,7 @@ def test_search_command_says_nothing_close_enough_with_the_score(monkeypatch, ca
     assert cli.main(["search", "Who won the 2022 FIFA World Cup?"], connect=_no_database) == 0
     assert capsys.readouterr().out == (
         "Nothing close enough: the best similarity was 0.40,"
-        " below the provisional threshold 0.70.\n"
+        " below the threshold 0.68.\n"
     )
 
 
@@ -261,7 +261,7 @@ def test_min_similarity_is_for_that_search_only(monkeypatch, capsys):
     assert capsys.readouterr().out == (
         "Nothing close enough: the best similarity was 0.65, below the threshold 0.80.\n"
     )
-    assert retrieval.PROVISIONAL_MIN_SIMILARITY == 0.70  # the constant never changes
+    assert retrieval.MIN_SIMILARITY == 0.68  # the constant never changes
 
 
 def test_search_command_on_an_empty_library(monkeypatch, capsys):
@@ -352,14 +352,20 @@ def test_the_real_ask_command_logs_with_channel_cli(monkeypatch):
     assert seen == ["cli"]
 
 
-def test_evaluate_is_a_stub_that_prints_one_sentence(capsys):
+def test_evaluate_hands_its_arguments_over_and_never_opens_the_library(monkeypatch):
     def no_connect():
-        raise AssertionError("evaluate must not open the database")
+        raise AssertionError("evaluate must not open the real library")
 
-    assert cli.main(["evaluate"], connect=no_connect) == 1
-    assert capsys.readouterr().out == (
-        "The evaluate command is not built yet; it comes with the golden set in block l.\n"
-    )
+    seen = []
+    monkeypatch.setattr(cli.evaluate, "main", lambda argv: seen.append(argv) or 0)
+    assert cli.main(["evaluate", "threshold", "--prefix"], connect=no_connect) == 0
+    assert cli.main(["evaluate", "--help"], connect=no_connect) == 0
+    assert seen == [["threshold", "--prefix"], ["--help"]]
+
+
+def test_evaluate_without_an_action_prints_its_usage(capsys):
+    assert cli.main(["evaluate"], connect=lambda: None) == 2
+    assert "freeze,build,prefix,threshold,retrieval,answers,drop" in capsys.readouterr().err
 
 
 def test_every_fr25_command_exists():

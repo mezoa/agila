@@ -1,0 +1,4 @@
+# The three web pages for the frozen library. Agila saves each ONCE into the eval database with its normal web saver; after that the saved copy is the frozen copy.
+https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
+https://github.com/humanlayer/advanced-context-engineering-for-coding-agents/blob/main/ace-fca.md
+https://news.outsourceaccelerator.com/world-bank-ph-bpo-ai/

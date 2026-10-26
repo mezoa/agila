@@ -9,8 +9,11 @@ import numpy as np
 from agila.chunking import CACHE_DIR, MODEL_NAME, Chunk, embedded_text
 
 DIMENSIONS = 384
-# BGE's retrieval instruction for questions (V11). OFF by default; decided on the golden set (U10).
+# BGE's retrieval instruction for questions (V11). Passages never get it (V29, `embed_chunks`).
 QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
+# ON for every question (CLI, API, evaluation): kept on the golden set dev half, 2026-10-26 (U10,
+# decisions.md). Stored chunk vectors do not change, so nothing needs re-embedding.
+USE_QUERY_INSTRUCTION = True
 
 
 class Embedder(Protocol):
@@ -44,15 +47,17 @@ def embed_chunks(
 
 
 def embed_question(
-    text: str, with_instruction: bool = False, embedder: Embedder | None = None
+    text: str, with_instruction: bool | None = None, embedder: Embedder | None = None
 ) -> np.ndarray:
-    """The one place a question becomes a vector: embedded like a passage, no prefix (V56).
+    """The one place a question becomes a vector (V56): QUERY_INSTRUCTION + the question.
 
-    `with_instruction=True` prepends QUERY_INSTRUCTION; nothing turns it on before block l (U10).
+    `with_instruction=None` follows USE_QUERY_INSTRUCTION; True or False forces it (the evaluation
+    compares both).
     """
     if not text.strip():
         raise ValueError("Type a question to search for.")
-    query = (QUERY_INSTRUCTION if with_instruction else "") + text.strip()
+    use = USE_QUERY_INSTRUCTION if with_instruction is None else with_instruction
+    query = (QUERY_INSTRUCTION if use else "") + text.strip()
     vector = next(iter((embedder or default_embedder()).query_embed(query)))
     if vector.dtype != np.float32 or vector.shape != (DIMENSIONS,):
         raise ValueError(f"Embedding must be {DIMENSIONS} float32 numbers, got {vector.shape}")

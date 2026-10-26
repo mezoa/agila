@@ -212,3 +212,12 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
   - `/ask` through the container: an answer with a program-copied citation, 8.5 s warm. Ollama stopped: `/health` 503 naming Ollama in 0.06 s, `api` stayed healthy for 25+ minutes, `/ask` returned kind `passages` with a note
   - `uv run python scripts/backup.py` -> 137,807 bytes, documents 4, chunks 50. `uv run python scripts/restore_test.py` -> 4 = 4, 50 = 50, passed, `agila_restore_test` dropped; `--target agila` refused; the real library still 4 documents and 50 chunks
   - Stop the api without touching the database: `docker compose stop api`, then `docker compose start api`; the `pgdata` volume stayed. Never `docker compose down -v`
+
+## Day 9 (2026-10-26), block l: golden-set evaluation (commands run by Eo; results as Eo reported them)
+- Before and after, the real library (FR35): `"select count(*), max(last_asked_at) from documents; select count(*) from query_log;" | docker compose exec -T db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -At'` -> `4|2026-10-24 14:31:55.458191+00` and `11`, unchanged (PowerShell 5.1 strips inner double quotes in `sh -c '... -c "..."'`, so the SQL is piped in with `-T`)
+- `uv run --env-file .env python -m agila.cli evaluate freeze` (network, once) then `evaluate build` -> `agila_eval` with 9 documents, the 3 web pages reloaded from stored HTML
+- `evaluate prefix` and `evaluate threshold --prefix` (dev half only) -> prefix kept, threshold 0.68 (decisions.md "Golden set, dev half")
+- `evaluate retrieval --save-baseline` (held-out half, run once) -> hit@3 13 of 14, M2 5 of 6, M3 median 0.010 s; `eval/baseline.json`
+- FR33: a copy of the baseline with the hit count raised by 1, then `evaluate retrieval --baseline <copy>` -> one sentence, exit 1; against the real baseline -> exit 0
+- `docker compose stop api`, then `evaluate answers` (twice: the second after the grading-sheet excerpt change) -> M4 median 12.0 s, slowest 16.3 s (second run); `eval/runs/grading-2026-10-26.md` graded by hand
+- Rerun commands for later: `eval/README.md`. Results: `eval/report.md`

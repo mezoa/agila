@@ -1,0 +1,21 @@
+# Made-up exam for the tests (not the real golden set). Format: number | half | question
+01 | dev | How tall is the blue lighthouse?
+02 | held-out | What colour is the harbour ferry?
+03 | dev | Who paints the fishing boats?
+04 | held-out | When does the night market open?
+05 | dev | How many steps lead to the chapel?
+06 | held-out | What fruit grows on the north hill?
+07 | held-out | Which bird nests on the pier?
+08 | dev | Where is the old bakery?
+09 | dev | How long is the coastal trail?
+10 | held-out | Who keeps the village clock?
+11 | dev | What is the harbour fee for kayaks?
+12 | held-out | When was the stone bridge built?
+13 | dev | What is the name of the island cat?
+14 | held-out | How deep is the lagoon?
+15 | dev | What do the bells play at noon?
+16 | held-out | Who won the regatta in 1990?
+17 | dev | What is the price of a moon ticket?
+18 | held-out | How many dragons live in the cave?
+19 | dev | What is the wifi password of the mayor?
+20 | held-out | Which planet does the ferry visit?

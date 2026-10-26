@@ -40,7 +40,7 @@ from agila.library import (
     save_url,
 )
 from agila.questions import ask_question
-from agila.retrieval import PROVISIONAL_MIN_SIMILARITY, search
+from agila.retrieval import MIN_SIMILARITY, search
 
 HOST = "127.0.0.1"  # FR26; the default when AGILA_HOST is unset
 HOST_VARIABLE = "AGILA_HOST"  # the container sets 0.0.0.0; Compose publishes only 127.0.0.1:8000
@@ -146,7 +146,7 @@ def create_app(
         return asdict(result) | {"formatted": format_answer(result)}
 
     @api.get("/search")
-    def find(conn: Conn, question: str, min_similarity: float = PROVISIONAL_MIN_SIMILARITY) -> dict:
+    def find(conn: Conn, question: str, min_similarity: float = MIN_SIMILARITY) -> dict:
         """Up to 3 passages, no model call (FR10); writes nothing (FR35)."""
         try:
             return asdict(search(conn, question, min_similarity=min_similarity, embedder=embedder))

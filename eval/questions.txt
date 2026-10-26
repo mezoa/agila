@@ -1,0 +1,22 @@
+# Agila exam paper v1, locked 2026-10-26. Format: number | half | question
+# Dev = practice half (may be used for tuning). Held-out = sealed half (run once at the end).
+01 | dev | How much money can someone earn working in AI automation in the Philippines?
+02 | held-out | What kind of personal project would make a good impression when applying for AI jobs?
+03 | dev | What can I use for a cough with phlegm?
+04 | held-out | What helps when my stomach feels gassy and bloated?
+05 | dev | What is Biogesic used for?
+06 | held-out | Why do teams review each other's code?
+07 | held-out | How many people work in the Philippine outsourcing industry?
+08 | dev | How do I keep my personal notes wiki from getting messy or out of date?
+09 | dev | Why did the university build the CORE Dashboard?
+10 | held-out | What steps does a record go through before it is published in the CORE Dashboard?
+11 | dev | What do I have to do first before starting the GADget training?
+12 | held-out | How long do I have to wait before I can send a CODI report?
+13 | dev | What problems did the TTLO have before the new system?
+14 | held-out | How did the researchers test if the TTLO system was easy to use?
+15 | dev | What can I take for a toothache?
+16 | held-out | Which schools in the Philippines teach AI automation?
+17 | dev | How many students does Caraga State University have?
+18 | held-out | How much does a software engineer earn in Singapore?
+19 | dev | How do I reset my GADget password?
+20 | held-out | How do I become a licensed pharmacist in the Philippines?

@@ -1,0 +1,15 @@
+# Made-up phrases for the tests. Format: number | phrase (answerable questions only)
+01 | thirty metres tall
+02 | painted bright red
+03 | Old Marta
+04 | opens at dusk
+05 | 112 steps
+06 | wild mangoes
+07 | grey heron
+08 | behind the post office
+09 | eleven kilometres
+10 | the retired teacher
+11 | kayaks pay five pesos
+12 | built in 1887
+13 | named Pilar
+14 | four metres deep

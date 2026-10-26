@@ -277,7 +277,7 @@ def test_search_returns_passages_and_writes_no_log(monkeypatch):
     monkeypatch.setattr(questions, "record", lambda *a: pytest.fail("search must not log"))
     body = TestClient(_app()).get("/search", params={"question": "Q?"}, headers=GOOD).json()
     assert body["passages"][0]["chunk_id"] == 11
-    assert seen["min_similarity"] == 0.70
+    assert seen["min_similarity"] == 0.68
 
 
 def test_a_refused_save_is_one_400_sentence():

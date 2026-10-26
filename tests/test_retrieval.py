@@ -9,7 +9,8 @@ import pytest
 
 from agila import library, retrieval
 from agila.chunking import CACHE_DIR
-from agila.retrieval import PROVISIONAL_MIN_SIMILARITY, search
+from agila.embed import QUERY_INSTRUCTION
+from agila.retrieval import MIN_SIMILARITY, search
 
 needs_model = pytest.mark.skipif(
     not CACHE_DIR.exists(), reason="model not cached in .cache/fastembed"
@@ -129,7 +130,8 @@ def test_search_never_imports_or_calls_a_model(conn, monkeypatch):
     embedder = QuestionEmbedder()
     result = search(conn, "a question", embedder=embedder)
     assert len(result.passages) == 1
-    assert embedder.questions == ["a question"]  # only the embedding model was used
+    # only the embedding model was used
+    assert embedder.questions == [QUERY_INSTRUCTION + "a question"]
 
 
 def test_retrieval_imports_no_model_or_http_client():
@@ -144,13 +146,13 @@ def test_retrieval_imports_no_model_or_http_client():
     assert "agila.llm" not in names
 
 
-# --- the provisional threshold (FR13 part) ---
+# --- the threshold (FR13 part) ---
 
 
-def test_the_default_threshold_is_the_provisional_constant():
-    assert PROVISIONAL_MIN_SIMILARITY == 0.70
+def test_the_default_threshold_is_the_tuned_constant():
+    assert MIN_SIMILARITY == 0.68  # set on the golden set dev half (block l)
     default = inspect.signature(search).parameters["min_similarity"].default
-    assert default is PROVISIONAL_MIN_SIMILARITY
+    assert default is MIN_SIMILARITY
 
 
 @pytest.mark.db

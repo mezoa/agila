@@ -12,9 +12,10 @@ import psycopg
 
 from agila.embed import Embedder, embed_question
 
-# PROVISIONAL: set on the dev half of the golden set in block l (FR13, U31). Chosen 2026-10-22
-# inside the gap seen on 8 questions (unanswerable up to 0.603, answerable from 0.786; V58).
-PROVISIONAL_MIN_SIMILARITY = 0.70
+# Set on the golden set dev half, with the query prefix, 2026-10-26 (FR13, U31, decisions.md):
+# 2 dev errors (answerable Q03 0.630 and Q05 0.621 refused), no unanswerable let through (highest
+# 0.657). Was 0.70 (block h). Checked once on the held-out half in the full run (eval/report.md).
+MIN_SIMILARITY = 0.68
 
 # Cosine distance `<=>`; similarity = 1 - distance (V54). `c.id` keeps equal scores in a stable
 # order (V55). Archived and superseded documents are never searched (FR9).
@@ -54,15 +55,17 @@ def search(
     conn: psycopg.Connection,
     question: str,
     *,
-    min_similarity: float = PROVISIONAL_MIN_SIMILARITY,
+    min_similarity: float = MIN_SIMILARITY,
     limit: int = 3,
     embedder: Embedder | None = None,
+    with_instruction: bool | None = None,
 ) -> SearchResult:
     """FR9: the closest chunks of active documents; FR10: no model is called.
 
-    Raises ValueError with one readable sentence for a blank question.
+    `with_instruction` goes to `embed_question` (None = the app's setting). Raises ValueError with
+    one readable sentence for a blank question.
     """
-    vector = embed_question(question, embedder=embedder)
+    vector = embed_question(question, with_instruction, embedder)
     with conn.transaction():  # short and read-only, so `conn` stays idle afterwards
         rows = conn.execute(TOP_CHUNKS, (vector, limit)).fetchall()
     found = [

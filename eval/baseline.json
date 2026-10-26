@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-26",
+  "git_commit": "a36dd12+changes",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "query_prefix": true,
+  "threshold": 0.68,
+  "answerable": 14,
+  "hits": 13,
+  "hits_dev": 6,
+  "hits_held_out": 7,
+  "false_refusals": 3,
+  "unanswerable": 6,
+  "refused": 5,
+  "refused_dev": 3,
+  "refused_held_out": 2,
+  "m3_cold_seconds": 0.821,
+  "m3_median_seconds": 0.01,
+  "m3_warm_searches": 10
+}

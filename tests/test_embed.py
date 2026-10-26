@@ -1,8 +1,15 @@
 import numpy as np
 import pytest
 
+from agila import embed
 from agila.chunking import CACHE_DIR, Chunk, embedded_text
-from agila.embed import DIMENSIONS, QUERY_INSTRUCTION, embed_chunks, embed_question
+from agila.embed import (
+    DIMENSIONS,
+    QUERY_INSTRUCTION,
+    USE_QUERY_INSTRUCTION,
+    embed_chunks,
+    embed_question,
+)
 
 
 class FakeEmbedder:
@@ -78,18 +85,28 @@ class QuestionFake:
         return iter([self.vector])
 
 
-def test_question_is_embedded_without_a_prefix_by_default():
+def test_question_gets_the_query_instruction_by_default():
+    # Kept on the golden set dev half, block l (U10).
+    assert USE_QUERY_INSTRUCTION is True
     fake = QuestionFake()
     vector = embed_question("  What is a URL?  ", embedder=fake)
-    assert fake.seen == ["What is a URL?"]
+    assert fake.seen == [QUERY_INSTRUCTION + "What is a URL?"]
+    assert QUERY_INSTRUCTION == "Represent this sentence for searching relevant passages: "
     assert (vector.dtype, vector.shape) == (np.float32, (DIMENSIONS,))
 
 
-def test_query_instruction_is_added_only_when_switched_on():
+def test_the_instruction_can_be_forced_off_or_on():
     fake = QuestionFake()
+    embed_question("What is a URL?", with_instruction=False, embedder=fake)
     embed_question("What is a URL?", with_instruction=True, embedder=fake)
-    assert fake.seen == [QUERY_INSTRUCTION + "What is a URL?"]
-    assert QUERY_INSTRUCTION == "Represent this sentence for searching relevant passages: "
+    assert fake.seen == ["What is a URL?", QUERY_INSTRUCTION + "What is a URL?"]
+
+
+def test_the_default_follows_the_setting(monkeypatch):
+    fake = QuestionFake()
+    monkeypatch.setattr(embed, "USE_QUERY_INSTRUCTION", False)
+    embed_question("What is a URL?", embedder=fake)
+    assert fake.seen == ["What is a URL?"]
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\n\t"])
@@ -115,9 +132,13 @@ def test_a_question_vector_of_the_wrong_size_is_rejected():
 
 
 @pytest.mark.skipif(not CACHE_DIR.exists(), reason="model not cached in .cache/fastembed")
-def test_a_question_is_embedded_exactly_like_a_passage():
+def test_a_question_is_embedded_exactly_like_a_passage_with_the_instruction_in_front():
     from agila.embed import default_embedder
 
     question = "How can I build a personal knowledge base with an LLM?"
-    passage = next(iter(default_embedder().passage_embed([question])))
-    assert np.array_equal(embed_question(question), passage)
+    model = default_embedder()
+    with_it = next(iter(model.passage_embed([QUERY_INSTRUCTION + question])))
+    without = next(iter(model.passage_embed([question])))
+    assert np.array_equal(embed_question(question), with_it)
+    assert np.array_equal(embed_question(question, with_instruction=False), without)
+    assert not np.array_equal(with_it, without)

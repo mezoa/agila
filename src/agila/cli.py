@@ -9,11 +9,12 @@
     uv run --env-file .env python -m agila.cli delete ID [--yes]
     uv run --env-file .env python -m agila.cli search "QUESTION" [--min-similarity X]
     uv run --env-file .env python -m agila.cli ask "QUESTION"
-    uv run --env-file .env python -m agila.cli evaluate
+    uv run --env-file .env python -m agila.cli evaluate ACTION   (see: evaluate --help)
 
 It calls the library, search and ask functions directly, not the API, so it works with the API
 stopped (Eo, 7.J1). `ask` needs Ollama and writes one `query_log` row with channel `cli` (FR35);
-`search` writes nothing. `evaluate` is a stub until the golden set (block l).
+`search` writes nothing. `evaluate` hands everything after it to `evaluate.main`, which opens only
+the database `agila_eval` and writes nothing to the real library (block l).
 """
 
 import argparse
@@ -24,7 +25,7 @@ from pathlib import Path
 
 import psycopg
 
-from agila import db
+from agila import db, evaluate
 from agila.ask import format_answer
 from agila.library import (
     LibraryError,
@@ -40,11 +41,10 @@ from agila.library import (
     unarchive,
 )
 from agila.questions import ask_question
-from agila.retrieval import PROVISIONAL_MIN_SIMILARITY, search
+from agila.retrieval import MIN_SIMILARITY, search
 
 MAX_ID = 2**63 - 1  # documents.id is a bigint
 SHOWN_CHARACTERS = 300
-NOT_BUILT = "The evaluate command is not built yet; it comes with the golden set in block l."
 
 
 def _similarity(text: str) -> float:
@@ -87,12 +87,14 @@ def _parser() -> argparse.ArgumentParser:
     find.add_argument(
         "--min-similarity",
         type=_similarity,
-        default=PROVISIONAL_MIN_SIMILARITY,
-        help=f"for this search only (default: provisional {PROVISIONAL_MIN_SIMILARITY})",
+        default=MIN_SIMILARITY,
+        help=f"for this search only (default: {MIN_SIMILARITY})",
     )
     ask = sub.add_parser("ask", help="answer a question from the saved passages (needs Ollama)")
     ask.add_argument("question")
-    sub.add_parser("evaluate", help="score the golden set (stub: not built until block l)")
+    sub.add_parser(
+        "evaluate", help="the golden set in agila_eval (see: evaluate --help)", add_help=False
+    )
     for name, what in (("archive", "archive"), ("unarchive", "un-archive")):
         command = sub.add_parser(name, help=f"{what} one document")
         command.add_argument("id", type=_document_id)
@@ -134,11 +136,10 @@ def _search(conn: psycopg.Connection, question: str, min_similarity: float) -> l
     result = search(conn, question, min_similarity=min_similarity)
     if result.best_similarity is None:
         return ["No documents saved yet."]
-    which = "provisional threshold" if min_similarity == PROVISIONAL_MIN_SIMILARITY else "threshold"
     if not result.passages:
         return [
             f"Nothing close enough: the best similarity was {result.best_similarity:.2f},"
-            f" below the {which} {min_similarity:.2f}."
+            f" below the threshold {min_similarity:.2f}."
         ]
     lines = []
     for number, p in enumerate(result.passages, 1):
@@ -172,10 +173,9 @@ def _manage(conn: psycopg.Connection, args: argparse.Namespace) -> list[str]:
 
 
 def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect) -> int:
+    if argv[:1] == ["evaluate"]:  # its own actions and options; never opens `agila`
+        return evaluate.main(argv[1:])
     args = _parser().parse_args(argv)
-    if args.command == "evaluate":  # STUB until block l: runs nothing, opens no database
-        print(NOT_BUILT)
-        return 1
     try:
         if args.command == "markdown" and not args.path.is_file():
             raise SaveError(f"File not found: {args.path}")

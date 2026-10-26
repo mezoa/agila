@@ -240,6 +240,26 @@ def test_the_ollama_check_asks_for_the_version_only(monkeypatch):
     assert (seen[0].method, str(seen[0].url)) == ("GET", "http://127.0.0.1:11434/api/version")
 
 
+def test_the_ollama_version_is_read_from_api_version_or_is_none(monkeypatch):
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    seen = []
+    ok = _transport(lambda r: httpx.Response(200, json={"version": "0.40.8"}), seen)
+    assert llm.ollama_version(transport=ok) == "0.40.8"
+    assert (seen[0].method, str(seen[0].url)) == ("GET", "http://127.0.0.1:11434/api/version")
+    for reply in (
+        lambda r: httpx.Response(500, json={"version": "0.40.8"}),
+        lambda r: httpx.Response(200, text="not json"),
+        lambda r: httpx.Response(200, json=["0.40.8"]),
+        lambda r: httpx.Response(200, json={"version": 40}),
+    ):
+        assert llm.ollama_version(transport=_transport(reply, [])) is None
+
+    def down(request):
+        raise httpx.ConnectError("refused")
+
+    assert llm.ollama_version(transport=_transport(down, [])) is None
+
+
 # --- block k: the Ollama address from the environment (V82) ---
 
 
