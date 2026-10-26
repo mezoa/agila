@@ -221,3 +221,5 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - FR33: a copy of the baseline with the hit count raised by 1, then `evaluate retrieval --baseline <copy>` -> one sentence, exit 1; against the real baseline -> exit 0
 - `docker compose stop api`, then `evaluate answers` (twice: the second after the grading-sheet excerpt change) -> M4 median 12.0 s, slowest 16.3 s (second run); `eval/runs/grading-2026-10-26.md` graded by hand
 - Rerun commands for later: `eval/README.md`. Results: `eval/report.md`
+- Gate 1 cleanup (2026-10-26): deleted `scripts/ollama_spike.py` and `tests/test_ollama_spike.py` (replaced by `llm.py`; no live references left)
+- Secret scan (2026-10-26): git log for .env empty, only .env.example tracked, gitleaks (ghcr.io/gitleaks/gitleaks:latest, digest sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f) scanned 33 commits, no leaks found.
