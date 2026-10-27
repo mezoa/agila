@@ -29,10 +29,14 @@ services:
       AGILA_HOST: 0.0.0.0  # inside the container; the publish below keeps it on 127.0.0.1
       OLLAMA_URL: http://host.docker.internal:11434
       HF_HUB_OFFLINE: "1"
+      TZ: Asia/Manila  # dates in Obsidian notes match the laptop's (block n, V123, U65)
     volumes:
       # The model from the laptop (V84). Fresh clone: run the one-time prefetch in setup-log first.
       # Read-only first (Eo, K2); switch to read-write only if fastembed needs to write (U46).
       - ./.cache/fastembed:/app/.cache/fastembed:ro
+      # FR28: the API writes Obsidian notes here (read-write); the default VAULT_PATH in the
+      # image is /app/raw/agila, so no variable is needed. Create raw\agila\files first.
+      - ./raw/agila:/app/raw/agila
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

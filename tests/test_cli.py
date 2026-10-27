@@ -461,3 +461,54 @@ def test_ask_command_writes_one_cli_row_and_marks_the_cited_document(conn, empty
     rows = conn.execute("SELECT channel, chunk_ids, status FROM query_log").fetchall()
     assert rows == [("cli", [chunk], "answered")]
     assert conn.execute("SELECT last_asked_at IS NOT NULL FROM documents").fetchone() == (True,)
+
+
+# --- FR28: export --retry and export warnings (block n, step 7) ---
+
+PENDING = (
+    "The Obsidian note of document 3 is pending: Could not write X (3).md; run export --retry."
+)
+
+
+def test_export_retry_prints_the_counts_and_exits_0(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "retry_exports", lambda conn: (2, 0, []))
+    assert cli.main(["export", "--retry"], connect=_no_database) == 0
+    assert capsys.readouterr().out == "Exported 2 notes; 0 still pending.\n"
+
+
+def test_export_retry_exits_1_and_names_each_pending_note(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "retry_exports", lambda conn: (1, 1, [PENDING]))
+    assert cli.main(["export", "--retry"], connect=_no_database) == 1
+    assert capsys.readouterr().out == f"Exported 1 notes; 1 still pending.\n{PENDING}\n"
+
+
+def test_export_without_retry_is_a_usage_error(capsys):
+    with pytest.raises(SystemExit) as stopped:
+        cli.main(["export"], connect=_never_connect)
+    assert stopped.value.code == 2
+    assert "--retry" in capsys.readouterr().err
+
+
+def test_a_save_prints_its_export_warning_on_its_own_line(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "manual.pdf"
+    path.write_bytes(b"%PDF-")  # never read: save_pdf is a fake here
+    saved = library.Saved(7, 5, "M", page_count=3, export_warning=PENDING)
+    monkeypatch.setattr(cli, "save_pdf", lambda *args, **kwargs: saved)
+    assert cli.main(["pdf", str(path)], connect=_no_database) == 0
+    assert capsys.readouterr().out == f"Saved M: 3 pages, 5 chunks\n{PENDING}\n"
+
+
+@pytest.mark.parametrize("command", ["archive", "unarchive"])
+def test_archive_and_unarchive_print_their_export_warning(command, monkeypatch, capsys):
+    monkeypatch.setattr(cli, command, lambda conn, i: library.Changed("T", PENDING))
+    assert cli.main([command, "4"], connect=_no_database) == 0
+    done = f'{command.capitalize()}d document 4 "T".'
+    assert capsys.readouterr().out == f"{done}\n{PENDING}\n"
+
+
+def test_delete_prints_the_file_to_delete_by_hand(monkeypatch, capsys):
+    warning = r"Delete by hand: C:\vault\raw\agila\T (4).md."
+    info = library.DocumentInfo(4, "T", "text", datetime(2026, 10, 27, tzinfo=UTC), 1, warning)
+    monkeypatch.setattr(cli, "delete_document", lambda conn, i: info)
+    assert cli.main(["delete", "4", "--yes"], connect=_no_database) == 0
+    assert capsys.readouterr().out == f'Deleted document 4 "T" and its 1 chunks.\n{warning}\n'

@@ -441,10 +441,10 @@ def test_list_shows_title_date_status_and_visibility(conn):
 def test_archive_and_unarchive_round_trip(conn):
     saved = save_text(conn, "T", "L", "Some text to keep.", FakeEmbedder())
     before = _vectors(conn, saved.document_id)
-    assert library.archive(conn, saved.document_id) == "T"
+    assert library.archive(conn, saved.document_id) == library.Changed("T")
     assert _status(conn, saved.document_id)[0] == "archived"
     assert _vectors(conn, saved.document_id) == before
-    assert library.unarchive(conn, saved.document_id) == "T"
+    assert library.unarchive(conn, saved.document_id) == library.Changed("T")
     assert _status(conn, saved.document_id)[0] == "active"
     assert _vectors(conn, saved.document_id) == before
 

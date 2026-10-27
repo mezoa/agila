@@ -335,6 +335,7 @@ def test_save_ask_list_and_delete_through_the_api_with_one_web_log_row(conn, emp
     note = {"title": "Note", "label": "L", "text": TEXT}
     saved = client.post("/save/text", json=note, headers=GOOD).json()
     assert saved["message"] == "Saved Note: 1 chunks"
+    assert saved["export_warning"] is None  # FR28: the note was written (DEVIATIONS 52)
     chunk = conn.execute("SELECT id FROM chunks").fetchone()[0]
     body = client.post("/ask", json={"question": "Q?"}, headers=GOOD).json()
     assert (body["kind"], body["citations"][0]["chunk_id"]) == ("answer", chunk)
@@ -346,6 +347,7 @@ def test_save_ask_list_and_delete_through_the_api_with_one_web_log_row(conn, emp
         f"/documents/{saved['document_id']}", params={"confirm": "true"}, headers=GOOD
     ).json()
     assert deleted["message"] == f'Deleted document {saved["document_id"]} "Note" and its 1 chunks.'
+    assert deleted["export_warning"] is None
     assert client.get("/documents", headers=GOOD).json() == []
 
 

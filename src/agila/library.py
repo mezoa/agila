@@ -1,6 +1,7 @@
 """Save pasted text, Markdown, a web page or a text PDF as one document with chunks and vectors;
 list, archive, unarchive and delete documents."""
 
+import dataclasses
 import hashlib
 import re
 from collections.abc import Callable
@@ -11,6 +12,7 @@ from pathlib import Path
 import psycopg
 from psycopg import errors
 
+from agila import export
 from agila.chunking import FRONT_MATTER, Chunk, chunk_document
 from agila.embed import Embedder, embed_chunks
 from agila.pdf import PdfError, read_pdf
@@ -50,13 +52,15 @@ class DocumentInfo:
     source_type: str
     saved_at: datetime
     chunk_count: int
+    export_warning: str | None = None
 
 
 @dataclass(frozen=True)
 class Saved:
     """`outcome` is "saved", "unchanged" (identical content already active, nothing written) or
     "replaced" (the older active copies in `replaced_ids` are now superseded). `page_count` is
-    set for a PDF only."""
+    set for a PDF only. `export_warning` is one sentence when the Obsidian note was not written
+    (FR28: the save itself still stands)."""
 
     document_id: int
     chunk_count: int
@@ -65,6 +69,15 @@ class Saved:
     replaced_ids: tuple[int, ...] = ()
     warning: str | None = None
     page_count: int | None = None
+    export_warning: str | None = None
+
+
+@dataclass(frozen=True)
+class Changed:
+    """An archive or unarchive: the title, and one sentence when the note was not updated."""
+
+    title: str
+    export_warning: str | None = None
 
 
 def describe(saved: Saved, name: str | None = None) -> str:
@@ -165,6 +178,8 @@ def save_pdf(
 
     Title defaults to the file name without extension, the source label to the file name. The
     checks and the cleaning live in `pdf.read_pdf`; a refused file saves nothing. No chunk cap.
+    The resolved path is stored so the original can be copied to the vault (FR28), also later
+    by `export --retry`; an unchanged PDF saved before that column existed gets it now (Q3).
     """
     path = Path(path)
     try:
@@ -173,7 +188,34 @@ def save_pdf(
         raise SaveError(str(exc)) from exc
     title = (title or "").strip() or path.stem
     label = (source_label or "").strip() or path.name
-    return _save(conn, title, label, "pdf", "", False, embedder, pages=pages, replace=replace)
+    original = str(path.resolve())
+    saved = _save(
+        conn,
+        title,
+        label,
+        "pdf",
+        "",
+        False,
+        embedder,
+        pages=pages,
+        replace=replace,
+        original_path=original,
+    )
+    if saved.outcome != "unchanged":
+        return saved
+    try:
+        with conn.transaction():
+            filled = conn.execute(
+                "UPDATE documents SET original_path = %s, export_pending = true"
+                " WHERE id = %s AND original_path IS NULL RETURNING id",
+                (original, saved.document_id),
+            ).fetchone()
+    except psycopg.Error:
+        return saved  # the save stands; the path is filled by a later save
+    if filled is None:
+        return saved
+    warning = _after_change(conn, [saved.document_id], copy={saved.document_id})
+    return dataclasses.replace(saved, export_warning=warning)
 
 
 def _first_heading(markdown: str) -> str | None:
@@ -202,6 +244,7 @@ def _save(
     max_chunks: int | None = None,
     pages: list[str] | None = None,
     replace: bool = False,
+    original_path: str | None = None,
 ) -> Saved:
     """FR7 and FR8: compare with the active copies, chunk and embed, then write in ONE transaction.
 
@@ -214,6 +257,8 @@ def _save(
     Markdown note with the label of another active note is kept beside it, with a warning.
     A PDF passes its cleaned `pages` instead of `text`: the hash covers them joined with a form
     feed, each page is chunked on its own, and `page` and `page_count` are written.
+    FR28: the new row and every superseded one are `export_pending` until their notes are
+    written after the commit; a failed export only adds `export_warning`.
     """
     page_count = len(pages) if pages is not None else None
     if pages is not None:
@@ -256,13 +301,15 @@ def _save(
             replaced_ids = tuple(row[0] for row in same) if supersede else ()
             if replaced_ids:
                 conn.execute(
-                    "UPDATE documents SET status = 'superseded' WHERE id = ANY(%s)",
+                    "UPDATE documents SET status = 'superseded', export_pending = true"
+                    " WHERE id = ANY(%s)",
                     (list(replaced_ids),),
                 )
             document_id = conn.execute(
                 "INSERT INTO documents (space_id, title, source_label, source_url,"
                 " normalized_url, source_type, identity_key, content_hash, supersedes_id,"
-                " page_count) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                " page_count, original_path)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
                 (
                     _default_space(conn),
                     title,
@@ -274,6 +321,7 @@ def _save(
                     content_hash,
                     replaced_ids[0] if replaced_ids else None,  # the newest old copy
                     page_count,
+                    original_path,
                 ),
             ).fetchone()[0]
             with conn.cursor() as cur:
@@ -300,12 +348,25 @@ def _save(
         raise SaveError(
             f"Saving {label} failed ({type(exc).__name__}); nothing was saved."
         ) from exc
+    # only the new PDF is copied: an old copy keeps the bytes it was saved with
+    exported = _after_change(conn, [document_id, *replaced_ids], copy={document_id})
     if replaced_ids:
         return Saved(
-            document_id, len(chunks), title, "replaced", replaced_ids, page_count=page_count
+            document_id,
+            len(chunks),
+            title,
+            "replaced",
+            replaced_ids,
+            page_count=page_count,
+            export_warning=exported,
         )
     return Saved(
-        document_id, len(chunks), title, warning=_label_warning(label, same), page_count=page_count
+        document_id,
+        len(chunks),
+        title,
+        warning=_label_warning(label, same),
+        page_count=page_count,
+        export_warning=exported,
     )
 
 
@@ -378,13 +439,13 @@ def list_documents(conn: psycopg.Connection) -> list[Listed]:
     return [Listed(*row) for row in rows]
 
 
-def archive(conn: psycopg.Connection, document_id: int) -> str:
+def archive(conn: psycopg.Connection, document_id: int) -> Changed:
     """FR19: an active document becomes archived; its chunks stay, so unarchive brings it back
-    exactly. Returns the title."""
+    exactly. FR28: its note's status is rewritten after the commit."""
     with conn.transaction():
         row = conn.execute(
-            "UPDATE documents SET status = 'archived' WHERE id = %s AND status = 'active'"
-            " RETURNING title",
+            "UPDATE documents SET status = 'archived', export_pending = true"
+            " WHERE id = %s AND status = 'active' RETURNING title",
             (document_id,),
         ).fetchone()
         if row is None:
@@ -392,12 +453,13 @@ def archive(conn: psycopg.Connection, document_id: int) -> str:
             raise LibraryError(
                 f"Document {document_id} is {status}; only active documents can be archived."
             )
-    return row[0]
+    return Changed(row[0], _after_change(conn, [document_id]))
 
 
-def unarchive(conn: psycopg.Connection, document_id: int) -> str:
+def unarchive(conn: psycopg.Connection, document_id: int) -> Changed:
     """FR19: an archived document becomes active again. A web page is refused while a newer copy
-    of its link is active (Eo, block g Q6). Returns the title."""
+    of its link is active (Eo, block g Q6). FR28: its note's status is rewritten after the
+    commit."""
     with conn.transaction():
         title, status, source_type, space_id, identity_key = _row(
             conn, document_id, "title, status, source_type, space_id, identity_key", lock=True
@@ -415,8 +477,11 @@ def unarchive(conn: psycopg.Connection, document_id: int) -> str:
                     f"A newer copy of this page is active (document {newer[0]});"
                     " archive or delete it first."
                 )
-        conn.execute("UPDATE documents SET status = 'active' WHERE id = %s", (document_id,))
-    return title
+        conn.execute(
+            "UPDATE documents SET status = 'active', export_pending = true WHERE id = %s",
+            (document_id,),
+        )
+    return Changed(title, _after_change(conn, [document_id]))
 
 
 def document_info(conn: psycopg.Connection, document_id: int) -> DocumentInfo:
@@ -427,11 +492,113 @@ def document_info(conn: psycopg.Connection, document_id: int) -> DocumentInfo:
 
 def delete_document(conn: psycopg.Connection, document_id: int) -> DocumentInfo:
     """FR20: delete one document by id; its chunks go with it (ON DELETE CASCADE) and a newer
-    copy's `supersedes_id` becomes NULL (ON DELETE SET NULL). There is no undo."""
+    copy's `supersedes_id` becomes NULL (ON DELETE SET NULL). There is no undo. FR28: after the
+    commit its note and PDF copy are deleted; a file that cannot be is named in one sentence."""
     with conn.transaction():
         info = _info(conn, document_id)
         conn.execute("DELETE FROM documents WHERE id = %s", (document_id,))
-    return info
+    if not export.enabled():
+        return info
+    names = [export.note_name(info.title, document_id)]
+    if info.source_type == "pdf":
+        names.append(f"files/{export.pdf_name(info.title, document_id)}")
+    left = export.delete_files(names)
+    if not left:
+        return info
+    files = " and ".join(str(export.vault_dir() / name) for name in left)
+    return dataclasses.replace(info, export_warning=f"Delete by hand: {files}.")
+
+
+def retry_exports(conn: psycopg.Connection) -> tuple[int, int, list[str]]:
+    """FR28 `export --retry`: write the note of every `export_pending` document (any status) and
+    copy the original of each PDF that is not superseded. Returns (written, still pending,
+    one sentence per document still pending)."""
+    with conn.transaction():
+        rows = conn.execute(
+            "SELECT id, source_type, status FROM documents WHERE export_pending ORDER BY id"
+        ).fetchall()
+    sentences = []
+    for document_id, source_type, status in rows:
+        copy = {document_id} if source_type == "pdf" and status != "superseded" else set()
+        warning = _after_change(conn, [document_id], copy=copy)
+        if warning:
+            sentences.append(warning)
+    return len(rows) - len(sentences), len(sentences), sentences
+
+
+def _after_change(
+    conn: psycopg.Connection, document_ids: list[int], copy: set[int] | None = None
+) -> str | None:
+    """FR28, run AFTER a commit: write the note of each document from the database, copy the
+    original of the PDFs in `copy`, then clear `export_pending` for those that fully worked.
+    Never raises and never touches what was committed: a failure is one sentence, and the flag
+    stays on for `export --retry`. Does nothing inside `export.off()`."""
+    if not export.enabled() or not document_ids:
+        return None
+    try:
+        docs, parts, originals = _notes(conn, document_ids)
+    except Exception as exc:  # the save stands whatever goes wrong here
+        return f"The Obsidian notes were not written ({type(exc).__name__}); run export --retry."
+    done, problems = [], []
+    for doc in docs:
+        try:
+            export.write_note(
+                doc.document_id,
+                export.note_name(doc.title, doc.document_id),
+                export.render_note(doc, parts.get(doc.document_id, [])),
+            )
+            if doc.source_type == "pdf" and doc.document_id in (copy or set()):
+                original = originals.get(doc.document_id)
+                if original is None:
+                    raise export.ExportError(
+                        f"No original path is stored for {doc.title}; save it again with pdf PATH."
+                    )
+                name = export.pdf_name(doc.title, doc.document_id)
+                export.copy_pdf(doc.document_id, Path(original), name)
+            done.append(doc.document_id)
+        except Exception as exc:  # any failure leaves the flag on
+            cause = str(exc) if isinstance(exc, export.ExportError) else type(exc).__name__
+            problems.append(
+                f"The Obsidian note of document {doc.document_id} is pending: "
+                f"{cause.rstrip('.')}; run export --retry."
+            )
+    if done:
+        try:
+            _clear_pending(conn, done)
+        except Exception as exc:  # any failure leaves the flag on
+            problems.append(
+                f"The notes were written but not marked done ({type(exc).__name__});"
+                " run export --retry."
+            )
+    return " ".join(problems) or None
+
+
+def _notes(conn: psycopg.Connection, document_ids: list[int]):
+    """The rows and chunks the notes are written from, read in one short transaction."""
+    with conn.transaction():
+        rows = conn.execute(
+            "SELECT id, title, source_type, source_label, source_url, saved_at, status,"
+            " page_count, original_path FROM documents WHERE id = ANY(%s) ORDER BY id",
+            (list(document_ids),),
+        ).fetchall()
+        chunks = conn.execute(
+            "SELECT document_id, text, heading, page FROM chunks WHERE document_id = ANY(%s)"
+            " ORDER BY document_id, position",
+            (list(document_ids),),
+        ).fetchall()
+    docs = [export.Doc(*row[:8]) for row in rows]
+    originals = {row[0]: row[8] for row in rows}
+    parts: dict[int, list[export.Part]] = {}
+    for document_id, text, heading, page in chunks:
+        parts.setdefault(document_id, []).append(export.Part(text, heading, page))
+    return docs, parts, originals
+
+
+def _clear_pending(conn: psycopg.Connection, document_ids: list[int]) -> None:
+    with conn.transaction():
+        conn.execute(
+            "UPDATE documents SET export_pending = false WHERE id = ANY(%s)", (document_ids,)
+        )
 
 
 def _info(conn: psycopg.Connection, document_id: int) -> DocumentInfo:

@@ -79,7 +79,11 @@ def _insert_document(conn, identity_key="doc-1", status="active", source_type="t
 @pytest.mark.db
 def test_migrate_on_empty_database(empty_db):
     with db.connect(dbname=empty_db, register=False) as plain:
-        assert db.migrate(plain) == ["0001_init.sql", "0002_identity_index_web_only.sql"]
+        assert db.migrate(plain) == [
+            "0001_init.sql",
+            "0002_identity_index_web_only.sql",
+            "0003_export.sql",
+        ]
         tables = {
             r[0]
             for r in plain.execute(
@@ -104,7 +108,23 @@ def test_second_migrate_is_a_noop(empty_db):
     with db.connect(dbname=empty_db, register=False) as plain:
         db.migrate(plain)
         assert db.migrate(plain) == []
-        assert plain.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 2
+        assert plain.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == 3
+
+
+@pytest.mark.db
+def test_documents_saved_before_0003_start_export_pending(empty_db, tmp_path):
+    for name in ("0001_init.sql", "0002_identity_index_web_only.sql"):
+        (tmp_path / name).write_bytes((db.MIGRATIONS_DIR / name).read_bytes())
+    with db.connect(dbname=empty_db, register=False) as plain:
+        db.migrate(plain, tmp_path)
+        old_id = _insert_document(plain, "text:old")
+        plain.commit()
+        assert db.migrate(plain) == ["0003_export.sql"]
+        new_id = _insert_document(plain, "text:new")
+        rows = plain.execute(
+            "SELECT id, export_pending, original_path FROM documents ORDER BY id"
+        ).fetchall()
+    assert rows == [(old_id, True, None), (new_id, True, None)]
 
 
 @pytest.mark.db

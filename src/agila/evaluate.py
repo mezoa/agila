@@ -26,7 +26,7 @@ from types import ModuleType
 
 import psycopg
 
-from agila import db, embed, llm, retrieval
+from agila import db, embed, export, llm, retrieval
 from agila.ask import Answer, Model, answer
 from agila.chunking import MODEL_NAME, TokenCounter, chunk_document
 from agila.embed import Embedder, default_embedder
@@ -342,17 +342,19 @@ def build(
     """Save the frozen library with the app's own save code: `.md` files as Markdown, `.txt` files
     as text (title = file name without extension, label = file name), each web page through
     `save_url` with its stored HTML (no network). Then check that every web page's stored chunks
-    are the chunks of its frozen HTML (U51). Returns (documents, chunks)."""
+    are the chunks of its frozen HTML (U51). Returns (documents, chunks). The Obsidian export is
+    off: these are not Eo's documents, and their ids would collide with the real library's."""
     folder = Path(folder)
     pages = _frozen_pages(folder, urls)
     try:
-        for path in sorted(folder.glob("*.md")):
-            save_markdown(conn, path, embedder=embedder)
-        for path in sorted(folder.glob("*.txt")):
-            text = path.read_text(encoding="utf-8-sig")
-            save_text(conn, path.stem, path.name, text, embedder=embedder)
-        for url, html in pages:
-            save_url(conn, url, fetcher=lambda _url, html=html: html, embedder=embedder)
+        with export.off():
+            for path in sorted(folder.glob("*.md")):
+                save_markdown(conn, path, embedder=embedder)
+            for path in sorted(folder.glob("*.txt")):
+                text = path.read_text(encoding="utf-8-sig")
+                save_text(conn, path.stem, path.name, text, embedder=embedder)
+            for url, html in pages:
+                save_url(conn, url, fetcher=lambda _url, html=html: html, embedder=embedder)
     except SaveError as exc:
         raise EvalError(f"The build stopped: {exc}") from exc
     except UnicodeDecodeError:

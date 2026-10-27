@@ -234,3 +234,21 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Same PDF again: `... agila.cli pdf eval\library\pdf\gadget-manual.pdf` -> `Already saved, unchanged: gadget-manual (document <id>).`
 - Page numbers: `... agila.cli ask "QUESTION"` on the three manuals; each cited `PDF page N` checked in a PDF viewer by its page box (not the printed number): pages 33, 10, 9 and 10, quote found on each
 - Database check: `"select source_type, count(*), count(page_count) from documents group by 1 order by 1;" | docker compose exec -T db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -At'` and `"select count(*), count(c.page) from chunks c join documents d on d.id = c.document_id where d.source_type = 'pdf';" | docker compose exec -T db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -At'` -> 72 of 72 and 476 of 476 (every PDF chunk has a page)
+
+## Day 11 (2026-10-27), block n: Obsidian export (commands run by Eo; results as Eo reported them)
+- Tests: `uv run ruff check .` -> All checks passed; `uv run pytest` -> 593 passed; `uv run --env-file .env pytest -m db` -> 109 passed
+- Migration: `uv run --env-file .env python -m agila.db migrate` -> `applied: 0003_export.sql`
+- Vault folders (once): `New-Item -ItemType Directory -Force raw\agila\files` (`raw/` stays git-ignored)
+- First export of the existing library: `uv run --env-file .env python -m agila.cli export --retry` -> 7 notes written, the 3 PDFs saved before block n still pending (no path stored)
+- PDF copies: `... agila.cli pdf eval\library\pdf\gadget-manual.pdf` (same for `csu-core-manual.pdf` and `ttlo-thesis.pdf`) -> `Already saved, unchanged: ...`; the path is stored and the copy made, 3 PDFs in `raw\agila\files` (the thesis copy is 32 MB)
+- Obsidian: the project folder opened as a vault; notes show the properties, the tags `agila` and `agila/<type>`, and `**PDF page N**` marks
+- Before/after listing (Obsidian closed), the rest of the vault must not change:
+  `Get-ChildItem -Recurse -File -Force | Where-Object { $_.FullName -notmatch '\(\.git|\.venv|\.cache|__pycache__|\.pytest_cache|\.ruff_cache)\' -and $_.FullName -notmatch '\raw\agila\' } | Select-Object FullName, Length, LastWriteTimeUtc | Export-Csv $env:TEMP\vault-before.csv -NoTypeInformation`,
+  then a text save, `archive`, `unarchive` and `delete <id> --yes` (text piped in: `"..." | ... agila.cli text --title "Block n check" --label n-check`), then the same listing into `vault-after.csv` and
+  `Compare-Object (Import-Csv $env:TEMP\vault-before.csv) (Import-Csv $env:TEMP\vault-after.csv) -Property FullName, Length, LastWriteTimeUtc` -> printed nothing
+- Rebuild with the mount: `docker compose up -d --build`, then `docker compose ps` (`api` healthy) and `curl.exe -s http://127.0.0.1:8000/health`
+- Time zone in the container: `docker compose exec api python -c "import datetime; print(datetime.datetime.now().astimezone())"` -> ends in `+08:00`
+- Through the API (`/docs`): a text save wrote its note into `raw\agila` and the delete removed it (the mount works both ways)
+- With Obsidian open: archive and unarchive of one document -> no warning, no `.tmp` file seen
+- Forced export failure: the save succeeded with the pending sentence (naming the error class, research U72), then `... agila.cli export --retry` wrote the note
+- Known limits: research U71 (`#word` in a body becomes an Obsidian tag), U72, U73

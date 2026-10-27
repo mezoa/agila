@@ -408,9 +408,10 @@ def _library(tmp_path):
 
 @needs_model
 @pytest.mark.db
-def test_build_saves_markdown_text_and_frozen_pages_with_no_network(conn, tmp_path):
+def test_build_saves_markdown_text_and_frozen_pages_with_no_network(conn, tmp_path, vault):
     folder = _library(tmp_path)
     documents, chunks = evaluate.build(conn, folder, URLS[:1], embedder=RecordingEmbedder())
+    assert not vault.exists()  # the export is off while the evaluation library is built (Q1)
     rows = conn.execute(
         "SELECT source_type, title, source_label, source_url FROM documents ORDER BY id"
     ).fetchall()

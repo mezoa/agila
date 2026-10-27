@@ -10,24 +10,27 @@
     uv run --env-file .env python -m agila.cli delete ID [--yes]
     uv run --env-file .env python -m agila.cli search "QUESTION" [--min-similarity X]
     uv run --env-file .env python -m agila.cli ask "QUESTION"
+    uv run --env-file .env python -m agila.cli export --retry
     uv run --env-file .env python -m agila.cli evaluate ACTION   (see: evaluate --help)
 
 It calls the library, search and ask functions directly, not the API, so it works with the API
 stopped (Eo, 7.J1). `ask` needs Ollama and writes one `query_log` row with channel `cli` (FR35);
 `search` writes nothing. `evaluate` hands everything after it to `evaluate.main`, which opens only
-the database `agila_eval` and writes nothing to the real library (block l).
+the database `agila_eval` and writes nothing to the real library (block l). Every save, archive,
+unarchive and delete also updates the Obsidian note (FR28); if that fails, one more line says so,
+and `export --retry` writes the notes still pending (exit 1 while any is pending).
 """
 
 import argparse
 import sys
 from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
 
 import psycopg
 
 from agila import db, evaluate
 from agila.ask import format_answer
+from agila.export import local_date
 from agila.library import (
     LibraryError,
     SaveError,
@@ -36,6 +39,7 @@ from agila.library import (
     describe,
     document_info,
     list_documents,
+    retry_exports,
     save_markdown,
     save_pdf,
     save_text,
@@ -108,11 +112,11 @@ def _parser() -> argparse.ArgumentParser:
     delete = sub.add_parser("delete", help="delete one document and its chunks")
     delete.add_argument("id", type=_document_id)
     delete.add_argument("--yes", action="store_true", help="really delete (default: dry run)")
+    export = sub.add_parser("export", help="write the Obsidian notes that are still pending")
+    export.add_argument(
+        "--retry", action="store_true", required=True, help="rewrite every pending note (FR28)"
+    )
     return parser
-
-
-def _date(value: datetime) -> str:
-    return value.astimezone().strftime("%Y-%m-%d")  # the laptop's local date
 
 
 def _list(conn: psycopg.Connection) -> list[str]:
@@ -120,7 +124,8 @@ def _list(conn: psycopg.Connection) -> list[str]:
     if not docs:
         return ["No documents saved yet."]
     return [
-        f"{d.document_id:>4}  {_date(d.saved_at)}  {d.status:<10}  {d.visibility:<11}  {d.title}"
+        f"{d.document_id:>4}  {local_date(d.saved_at)}  {d.status:<10}  {d.visibility:<11}"
+        f"  {d.title}"
         for d in docs
     ]
 
@@ -130,13 +135,13 @@ def _delete(conn: psycopg.Connection, document_id: int, yes: bool) -> list[str]:
         info = document_info(conn, document_id)
         return [
             f'Would delete document {info.document_id} "{info.title}" ({info.source_type},'
-            f" saved {_date(info.saved_at)}, {info.chunk_count} chunks). Nothing deleted."
+            f" saved {local_date(info.saved_at)}, {info.chunk_count} chunks). Nothing deleted."
             " Run again with --yes to delete it."
         ]
     info = delete_document(conn, document_id)
     return [
         f'Deleted document {info.document_id} "{info.title}" and its {info.chunk_count} chunks.'
-    ]
+    ] + _warning(info.export_warning)
 
 
 def _search(conn: psycopg.Connection, question: str, min_similarity: float) -> list[str]:
@@ -150,7 +155,7 @@ def _search(conn: psycopg.Connection, question: str, min_similarity: float) -> l
         ]
     lines = []
     for number, p in enumerate(result.passages, 1):
-        saved = _date(p.saved_at)
+        saved = local_date(p.saved_at)
         page = f", PDF page {p.page}" if p.page is not None else ""
         lines.append(
             f"{number}. {p.similarity:.2f}  {p.title}  ({p.source}{page}, saved {saved})"
@@ -175,11 +180,21 @@ def _manage(conn: psycopg.Connection, args: argparse.Namespace) -> list[str]:
         return _search(conn, args.question, args.min_similarity)
     if args.command == "list":
         return _list(conn)
-    if args.command == "archive":
-        return [f'Archived document {args.id} "{archive(conn, args.id)}".']
-    if args.command == "unarchive":
-        return [f'Unarchived document {args.id} "{unarchive(conn, args.id)}".']
+    if args.command in ("archive", "unarchive"):
+        change = (archive if args.command == "archive" else unarchive)(conn, args.id)
+        done = f'{args.command.capitalize()}d document {args.id} "{change.title}".'
+        return [done] + _warning(change.export_warning)
     return _delete(conn, args.id, args.yes)
+
+
+def _export(conn: psycopg.Connection) -> tuple[list[str], int]:
+    """FR28 `export --retry`: the lines to print, and exit 1 while any note is still pending."""
+    written, pending, sentences = retry_exports(conn)
+    return [f"Exported {written} notes; {pending} still pending."] + sentences, int(pending > 0)
+
+
+def _warning(sentence: str | None) -> list[str]:
+    return [sentence] if sentence else []
 
 
 def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect) -> int:
@@ -193,8 +208,11 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
             if args.file is not None and not args.file.is_file():
                 raise SaveError(f"File not found: {args.file}")
             text = args.file.read_text(encoding="utf-8") if args.file else sys.stdin.read()
+        code = 0
         with connect() as conn:
-            if args.command in ("list", "archive", "unarchive", "delete", "search", "ask"):
+            if args.command == "export":
+                lines, code = _export(conn)
+            elif args.command in ("list", "archive", "unarchive", "delete", "search", "ask"):
                 lines = _manage(conn, args)
             else:
                 if args.command == "text":
@@ -211,7 +229,8 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
                         conn, args.path, args.title, args.label, replace=args.replace
                     )
                     name = args.title or args.path.name
-                lines = [describe(saved, name)] + ([saved.warning] if saved.warning else [])
+                lines = [describe(saved, name)] + _warning(saved.warning)
+                lines += _warning(saved.export_warning)
     except (SaveError, LibraryError) as exc:
         print(exc)
         return 1
@@ -228,7 +247,7 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
         print(exc)
         return 1
     print("\n".join(lines))
-    return 0
+    return code
 
 
 if __name__ == "__main__":

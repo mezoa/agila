@@ -1,12 +1,14 @@
 import ipaddress
 import socket
 import sys
+from pathlib import Path
 
 import pytest
 
-from agila import db
+from agila import db, export
 
 TEST_DB = "agila_test"
+REAL_VAULT_KEY = pytest.StashKey[set]()
 
 
 # --- network guard: no test may leave this computer (block f, part 2, step 1) ---
@@ -132,6 +134,49 @@ def net_guard(monkeypatch):
             "Blocked network attempts (not allowed in tests): " + "; ".join(guard.attempts),
             pytrace=False,
         )
+
+
+# --- test vault: no test may write the real raw/ folder (block n, steps 2 and 6) ---
+
+
+@pytest.fixture(autouse=True)
+def vault(tmp_path):
+    """Every test exports into its own temporary vault; returns the folder notes go to. The
+    fixture has its own patch object, so nothing a test does to `monkeypatch` can undo it."""
+    folder = tmp_path / "vault" / "raw" / "agila"
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("VAULT_PATH", str(folder))
+        yield folder
+
+
+def real_vault_names(folder: Path = export.DEFAULT_VAULT) -> set[str]:
+    """File names under the real project raw/agila (empty when the folder does not exist)."""
+    if not folder.exists():
+        return set()
+    return {p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file()}
+
+
+def vault_difference(before: set[str], after: set[str]) -> str | None:
+    """One sentence when the real vault's file names changed during the test run."""
+    if before == after:
+        return None
+    added, removed = sorted(after - before), sorted(before - after)
+    return (
+        f"The test run changed the real {export.DEFAULT_VAULT}: added {added}, removed {removed}."
+    )
+
+
+def pytest_sessionstart(session):
+    session.config.stash[REAL_VAULT_KEY] = real_vault_names()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Fails the run if the real vault's file names differ from the start (block n lesson)."""
+    before = session.config.stash.get(REAL_VAULT_KEY, set())
+    problem = vault_difference(before, real_vault_names())
+    if problem:
+        print(f"\n{problem}", file=sys.stderr)
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 def _recreate_test_database():
