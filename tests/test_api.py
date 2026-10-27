@@ -10,6 +10,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from agila import api, db, llm, questions
+from agila.ask import format_search
 from agila.retrieval import Passage, SearchResult
 
 KEY = "test-key-not-a-secret"
@@ -138,7 +139,8 @@ def test_main_serves_on_loopback_port_8000(monkeypatch):
     monkeypatch.delenv("AGILA_HOST", raising=False)
     seen = {}
     assert api.main(run=lambda app, **kwargs: seen.update(kwargs)) == 0
-    assert seen == {"host": "127.0.0.1", "port": 8000}
+    # access_log off: GET /search carries the question in its URL (NFR8, DEVIATIONS 55)
+    assert seen == {"host": "127.0.0.1", "port": 8000, "access_log": False}
 
 
 def test_main_listens_on_agila_host_when_it_is_set(monkeypatch):
@@ -147,7 +149,7 @@ def test_main_listens_on_agila_host_when_it_is_set(monkeypatch):
     monkeypatch.setenv("AGILA_HOST", "0.0.0.0")
     seen = {}
     assert api.main(run=lambda app, **kwargs: seen.update(kwargs)) == 0
-    assert seen == {"host": "0.0.0.0", "port": 8000}
+    assert seen == {"host": "0.0.0.0", "port": 8000, "access_log": False}
 
 
 # --- open pages: /health and /docs ---
@@ -278,6 +280,46 @@ def test_search_returns_passages_and_writes_no_log(monkeypatch):
     body = TestClient(_app()).get("/search", params={"question": "Q?"}, headers=GOOD).json()
     assert body["passages"][0]["chunk_id"] == 11
     assert seen["min_similarity"] == 0.68
+    # the same text the CLI's `search` prints (one formatter, Eo's Q3)
+    assert body["formatted"] == format_search(SearchResult([PASSAGE], 0.8, 0.68))
+    assert body["formatted"].startswith("1. 0.80  llm-wiki  (https://example.test, saved ")
+
+
+def test_search_formatted_says_nothing_close_enough(monkeypatch):
+    monkeypatch.setattr(api, "search", lambda conn, q, min_similarity, embedder: (
+        SearchResult([], 0.402, min_similarity)
+    ))
+    body = TestClient(_app()).get("/search", params={"question": "Q?"}, headers=GOOD).json()
+    assert body["formatted"] == (
+        "Nothing close enough: the best similarity was 0.40, below the threshold 0.68."
+    )
+
+
+# --- the channel header (DEVIATIONS 54) ---
+
+
+def test_ask_without_the_channel_header_logs_web(no_database):
+    TestClient(_app(ScriptedModel(ANSWER))).post("/ask", json={"question": "Q?"}, headers=GOOD)
+    assert no_database == [("answer", "web")]
+
+
+def test_ask_with_the_discord_channel_header_logs_discord(no_database):
+    headers = GOOD | {"X-Agila-Channel": "discord"}
+    response = TestClient(_app(ScriptedModel(ANSWER))).post(
+        "/ask", json={"question": "Q?"}, headers=headers
+    )
+    assert response.status_code == 200
+    assert no_database == [("answer", "discord")]
+
+
+@pytest.mark.parametrize("value", ["cli", "Discord", "x", ""])
+def test_an_unknown_channel_is_one_400_sentence_and_nothing_is_asked(no_database, value):
+    model = ScriptedModel(ANSWER)
+    headers = GOOD | {"X-Agila-Channel": value}
+    response = TestClient(_app(model)).post("/ask", json={"question": "Q?"}, headers=headers)
+    assert response.status_code == 400
+    assert response.json() == {"detail": f'Unknown channel "{value}"; use web or discord.'}
+    assert (no_database, model.calls) == ([], 0)
 
 
 def test_a_refused_save_is_one_400_sentence():
@@ -349,6 +391,25 @@ def test_save_ask_list_and_delete_through_the_api_with_one_web_log_row(conn, emp
     assert deleted["message"] == f'Deleted document {saved["document_id"]} "Note" and its 1 chunks.'
     assert deleted["export_warning"] is None
     assert client.get("/documents", headers=GOOD).json() == []
+
+
+@pytest.mark.db
+def test_an_ask_from_the_bot_writes_one_discord_log_row(conn, empty_db):
+    app = api.create_app(
+        KEY, warm_up=_no_warm_up, model=CitesTheFirstPassage(), embedder=SameVectorEmbedder()
+    )
+
+    def test_connection():
+        with db.connect(dbname=empty_db) as c:
+            yield c
+
+    app.dependency_overrides[api.connection] = test_connection
+    client = TestClient(app)
+    client.post("/save/text", json={"title": "Note", "label": "L", "text": TEXT}, headers=GOOD)
+    headers = GOOD | {"X-Agila-Channel": "discord"}
+    assert client.post("/ask", json={"question": "Q?"}, headers=headers).status_code == 200
+    rows = conn.execute("SELECT channel, status FROM query_log").fetchall()
+    assert rows == [("discord", "answered")]
 
 
 def _note(conn):

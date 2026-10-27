@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from agila import cli, db, library, llm, netcheck, questions, retrieval
+from agila.ask import format_search
 from agila.chunking import CACHE_DIR
 
 
@@ -322,6 +323,19 @@ def test_search_command_on_an_empty_library(monkeypatch, capsys):
     monkeypatch.setattr(cli, "search", lambda conn, q, *, min_similarity: _result([], None))
     assert cli.main(["search", "q"], connect=_no_database) == 0
     assert capsys.readouterr().out == "No documents saved yet.\n"
+
+
+def test_search_command_prints_exactly_the_shared_format(monkeypatch, capsys):
+    # Regression for block o (Q3): the CLI and `/search` share `ask.format_search`. The exact
+    # lines are pinned by the tests above; this one pins that the CLI adds nothing to them.
+    pdf_passage = retrieval.Passage(
+        12, "Text on a manual page.", "Intro", 38, "ttlo-thesis", "ttlo-thesis.pdf",
+        datetime(2026, 10, 21, 9, 0, tzinfo=UTC), 0.8,
+    )
+    result = _result([_passage(0.786, heading="Setup", text="word " * 100), pdf_passage])
+    monkeypatch.setattr(cli, "search", lambda conn, q, *, min_similarity: result)
+    assert cli.main(["search", "q"], connect=_no_database) == 0
+    assert capsys.readouterr().out == format_search(result) + "\n"
 
 
 @pytest.mark.parametrize("bad", ["abc", "1.5", "-2", "nan"])

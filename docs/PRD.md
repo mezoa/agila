@@ -85,6 +85,8 @@ Not in the 15 days. Kept so nothing is lost.
 - n8n AI or LLM nodes and agents, community nodes, and exposing n8n to the internet.
 - Two-way Obsidian sync (editing a note does not change what Agila searches).
 - Scanned PDFs and images (OCR), generated images, browser extension, bookmark import, custom web or mobile app, Telegram bot, editing saved content, hybrid search, hosted models.
+- Compact /ask for other people: a 'thinking' placeholder, then one edited message with the answer and a one-line source; passages and similarity scores only behind a detail option or the CLI. Would revise FR10, FR27, UC3 and the FR27 check. Not needed while Eo is the only user.
+- Bot error reply: an unexpected error inside a Discord command is only logged, so the user can see 'thinking…' until Discord gives up (up to 15 minutes). A one-line error reply would fix it.
 
 ## 5. Tiers, hours and gates
 

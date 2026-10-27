@@ -13,6 +13,7 @@ __pycache__/
 # local data and notes (saved content must never be committed)
 raw/
 backups/
+logs/
 .obsidian/
 .DS_Store
 

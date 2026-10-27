@@ -252,3 +252,21 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - With Obsidian open: archive and unarchive of one document -> no warning, no `.tmp` file seen
 - Forced export failure: the save succeeded with the pending sentence (naming the error class, research U72), then `... agila.cli export --retry` wrote the note
 - Known limits: research U71 (`#word` in a body becomes an Obsidian tag), U72, U73
+
+## Day 12 (2026-10-27), block o part 1: Discord bot `/ping`, `/ask`, `/save` (commands run by Eo; results as Eo reported them)
+- Shell check: `Get-ChildItem Env: | Where-Object Name -match 'AGILA|POSTGRES|DISCORD' | Select-Object Name` -> nothing (PROTOCOL rule 9)
+- Tests: `uv run ruff check .` -> All checks passed; `uv run pytest` -> 759 passed; `uv run --env-file .env pytest -m db` -> 110 passed
+- Image size: `docker image ls --format "{{.Repository}} {{.Size}}" | Select-String agila` -> `api` 634 MB before, 655 MB after the rebuild (discord.py is a main dependency, Q1 accepted)
+- Rebuild: `docker compose up -d --build`, then `docker compose ps` (`api` healthy) and `curl.exe -s http://127.0.0.1:8000/health` -> `{"database":"ok","ollama":"ok"}`
+- Access log off (U81): `/docs` `GET /search` with `access log check words`, then `docker compose logs api --since 5m | Select-String "access log check"` -> printed nothing
+- Register the commands: `uv run --env-file .env python -m agila.bot --sync` -> 3 commands registered in the server
+- Start (own window): `uv run --env-file .env python -m agila.bot` -> online, no `PrivilegedIntentsRequired` error (U7)
+- `/ping` -> pong, `Database: ok`, `Ollama: ok`
+- `/ask` answerable -> the passages, then the answer with Sources; `docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT channel, status, cardinality(chunk_ids), round(seconds::numeric, 1) FROM query_log ORDER BY id DESC LIMIT 1"'` -> `discord | answered | 3`
+- `/ask` on a sourdough question -> refused; the same query -> `discord | refused | 0`
+- `/save link` -> saved in 3.7 s the first time, `Already saved, unchanged` in 1.9 s (U80); `/save text` -> saved, the note appeared in `rawgila`; both check notes deleted afterwards (`agila.cli delete <id> --yes`)
+- No pings (U79): a `/save text` note with `@everyone` and a real user mention displayed as text; the channel showed only an ordinary unread dot, no red mention badge, the message not highlighted -> passed
+- Busy (NFR15): two `/ask` within a second from two devices -> one answered; the other showed the passages, then `Agila is answering another question right now. Try again in a minute.` The busy sentence arrives after the passages, not alone; accepted, because the guard sits on the slow answer step
+- Stranger (U74): not run with a second account; covered by unit tests only
+- Stop (U78): `Ctrl+C` -> clean stop. `Get-Content logsot.log -Tail 30` -> only command, result, seconds and pieces plus discord.py startup lines; no question text, titles or user IDs. Token: `$t = (Select-String -Path .env -Pattern '^DISCORD_BOT_TOKEN=(.+)').Matches[0].Groups[1].Value; Select-String -Path logsot.log -SimpleMatch $t; Remove-Variable t` -> nothing printed
+- Parked limit: an unexpected error inside a command is only logged, so the user can see "thinking..." for up to 15 minutes. Candidate for a one-line reply later (not built)

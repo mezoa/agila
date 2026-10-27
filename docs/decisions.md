@@ -101,3 +101,21 @@ Dev half only (10 questions: 7 answerable, 3 unanswerable), raw top 3 from `eval
 - **Where:** `VAULT_PATH` defaults to `raw/agila` in the project folder (no `.env` line needed, DEVIATIONS 53); the `api` container gets the bind mount `./raw/agila:/app/raw/agila` and `TZ=Asia/Manila`.
 - **Private documents:** exported too; `visibility: laptop_only` comes in block p.
 - **Plan answers (Q1 to Q8, Eo, 2026-10-27):** `evaluate build` runs with the export off; `archive` and `unarchive` return `Changed(title, export_warning)`; an "unchanged" `pdf PATH` save of a document without `original_path` fills it and exports; retry keeps a PDF pending while its original is missing; `export` needs `--retry`; tests compare exact note text (no YAML package); the extra hour comes from Day 11's buffer. The date helper moves from `cli.py` to `export.py` so the imports do not form a circle.
+
+## Discord bot (block o, Eo, 2026-10-27; research 2r, plan "Block o plan, part 1")
+- **Library:** `discord.py==2.7.1` pinned, no `[voice]` (no PyNaCl); the `api` image also gets it, accepted for now.
+- **Commands:** guild commands only (`DISCORD_GUILD_ID`), registered only by `python -m agila.bot --sync`, never on a normal start. Part 1: `/ping`, `/ask`, `/save link`, `/save text`; part 2 (Day 12): `/list`, `/archive`, `/delete` and `POST /documents/{id}/archive`; unarchive stays CLI-only.
+- **Secrets and settings:** `DISCORD_BOT_TOKEN`, `DISCORD_ALLOWED_USER_IDS` (comma-separated integers; blank = nobody; a bad entry stops the start), `DISCORD_GUILD_ID`, all only in `.env`; `.env.example` has the names with empty values.
+- **Who gets an answer (FR40):** `CommandTree.interaction_check`, before `defer`; anyone else gets nothing at all. `Intents.default()`, no privileged intent.
+- **Thin client (NFR10):** the bot calls only the API, with `httpx.AsyncClient(trust_env=False)`, the `X-API-Key` header and `X-Agila-Channel: discord`; it imports no other `agila` module and never touches the vault. Timeouts: `/ask` 270 s, the two saves 120 s, the rest 30 s.
+- **`/ask`:** defer, `GET /search`, edit the original response with the passages, `POST /ask` (always, so each question has one log row), then the result as a follow-up: the answer with sources, a refusal's sentence, or only the note for the fallback and busy cases.
+- **One formatter:** `ask.format_search` makes the passages text for the CLI's `search` and for the `formatted` field of `/search`, so all views match.
+- **`/save`:** `link` → `POST /save/url`, `text` → `POST /save/text` (label optional, defaults to the title); the reply is the API's own `message` plus `warning` and `export_warning` when set, or its refusal sentence.
+- **`/ping`:** answers "pong" and adds the `/health` result; when the API is down it still answers "pong" with one sentence.
+- **Messages:** pieces of at most 1,900 characters (DEVIATIONS 57); `AllowedMentions.none()` on the client and on every send.
+- **Logs (NFR8):** `logs/bot.log` at INFO, never DEBUG; no token, saved text or full question; httpx errors as status and error class only; the `httpx` logger at WARNING because it logs request URLs (V135); the API's access log is off (DEVIATIONS 55).
+- **Running it:** `uv run --env-file .env python -m agila.bot` in its own window, `Ctrl+C` to stop.
+
+## Parked after block o part 1 (Eo, 2026-10-27; PRD section 4 backlog, not built)
+- Compact /ask for other people: a 'thinking' placeholder, then one edited message with the answer and a one-line source; passages and similarity scores only behind a detail option or the CLI. Would revise FR10, FR27, UC3 and the FR27 check. Not needed while Eo is the only user.
+- Bot error reply: an unexpected error inside a Discord command is only logged, so the user can see 'thinking…' until Discord gives up (up to 15 minutes). A one-line error reply would fix it.

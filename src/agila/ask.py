@@ -14,7 +14,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ValidationError
 
 from agila import llm
-from agila.retrieval import Passage
+from agila.retrieval import Passage, SearchResult
 from agila.sentences import split_sentences
 
 REFUSAL = "I couldn't find this in your saved material."
@@ -184,6 +184,30 @@ def format_answer(result: Answer) -> str:
         lines.append(
             f"{n}. {_where(p.title, p.heading)} ({p.source}{page}, saved {_date(p.saved_at)})"
         )
+        text = " ".join(p.text.split())
+        more = "..." if len(text) > SHOWN_CHARACTERS else ""
+        lines.append("   " + text[:SHOWN_CHARACTERS] + more)
+    return "\n".join(lines)
+
+
+def format_search(result: SearchResult) -> str:
+    """Plain text for a search (FR10): each passage with its score, source and date. The CLI's
+    `search` prints it and `/search` returns it as `formatted`, so every view matches."""
+    if result.best_similarity is None:
+        return "No documents saved yet."
+    if not result.passages:
+        return (
+            f"Nothing close enough: the best similarity was {result.best_similarity:.2f},"
+            f" below the threshold {result.min_similarity:.2f}."
+        )
+    lines = []
+    for n, p in enumerate(result.passages, 1):
+        page = f", PDF page {p.page}" if p.page is not None else ""
+        lines.append(
+            f"{n}. {p.similarity:.2f}  {p.title}  ({p.source}{page}, saved {_date(p.saved_at)})"
+        )
+        if p.heading:
+            lines.append(f"   Section: {p.heading}")
         text = " ".join(p.text.split())
         more = "..." if len(text) > SHOWN_CHARACTERS else ""
         lines.append("   " + text[:SHOWN_CHARACTERS] + more)

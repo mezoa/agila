@@ -20,13 +20,13 @@ from types import ModuleType
 from typing import Annotated
 
 import psycopg
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Security
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, Security
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 from agila import db, llm
-from agila.ask import Model, format_answer
+from agila.ask import Model, format_answer, format_search
 from agila.embed import Embedder
 from agila.library import (
     LibraryError,
@@ -48,7 +48,8 @@ PORT = 8000
 KEY_HEADER = "X-API-Key"
 KEY_VARIABLE = "AGILA_API_KEY"
 WRONG_KEY = "Missing or wrong API key."
-CHANNEL = "web"  # [assumed] until the bot (block m) needs "discord"
+CHANNEL_HEADER = "X-Agila-Channel"  # who is asking, for query_log (DEVIATIONS 54)
+API_CHANNELS = ("web", "discord")  # `cli` is written only by the CLI itself, never over HTTP
 
 
 class AskIn(BaseModel):
@@ -81,6 +82,18 @@ def connection() -> Iterator[psycopg.Connection]:
 
 
 Conn = Annotated[psycopg.Connection, Depends(connection)]
+
+
+def channel(value: Annotated[str | None, Header(alias=CHANNEL_HEADER)] = None) -> str:
+    """The `X-Agila-Channel` header: missing means `web`; anything not in API_CHANNELS is 400."""
+    if value is None:
+        return "web"
+    if value not in API_CHANNELS:
+        raise HTTPException(400, f'Unknown channel "{value}"; use web or discord.')
+    return value
+
+
+Channel = Annotated[str, Depends(channel)]
 
 
 def _saved(saved) -> dict:
@@ -137,21 +150,23 @@ def create_app(
         return JSONResponse(body, status_code=503 if any(problems.values()) else 200)
 
     @api.post("/ask")
-    def ask(body: AskIn, conn: Conn) -> dict:
+    def ask(body: AskIn, conn: Conn, channel: Channel) -> dict:
         """The checked, cited answer (FR11), or a refusal, or passages with a note."""
         try:
-            result = ask_question(conn, body.question, CHANNEL, model=model, embedder=embedder)
+            result = ask_question(conn, body.question, channel, model=model, embedder=embedder)
         except ValueError as exc:  # a blank question
             raise HTTPException(400, str(exc)) from None
         return asdict(result) | {"formatted": format_answer(result)}
 
     @api.get("/search")
     def find(conn: Conn, question: str, min_similarity: float = MIN_SIMILARITY) -> dict:
-        """Up to 3 passages, no model call (FR10); writes nothing (FR35)."""
+        """Up to 3 passages, no model call (FR10); writes nothing (FR35). `formatted` is the same
+        text the CLI's `search` prints."""
         try:
-            return asdict(search(conn, question, min_similarity=min_similarity, embedder=embedder))
+            result = search(conn, question, min_similarity=min_similarity, embedder=embedder)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
+        return asdict(result) | {"formatted": format_search(result)}
 
     @api.get("/documents")
     def documents(conn: Conn) -> list[dict]:
@@ -199,7 +214,9 @@ def main(run: Callable[..., None] | None = None) -> int:
         import uvicorn
 
         run = uvicorn.run
-    run(app, host=os.environ.get(HOST_VARIABLE) or HOST, port=PORT)
+    # No access log: `GET /search?question=...` would put the whole question in it (NFR8,
+    # DEVIATIONS 55). The container runs this same `main`.
+    run(app, host=os.environ.get(HOST_VARIABLE) or HOST, port=PORT, access_log=False)
     return 0
 
 

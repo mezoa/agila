@@ -29,7 +29,7 @@ from pathlib import Path
 import psycopg
 
 from agila import db, evaluate
-from agila.ask import format_answer
+from agila.ask import format_answer, format_search
 from agila.export import local_date
 from agila.library import (
     LibraryError,
@@ -50,7 +50,6 @@ from agila.questions import ask_question
 from agila.retrieval import MIN_SIMILARITY, search
 
 MAX_ID = 2**63 - 1  # documents.id is a bigint
-SHOWN_CHARACTERS = 300
 
 
 def _similarity(text: str) -> float:
@@ -145,27 +144,8 @@ def _delete(conn: psycopg.Connection, document_id: int, yes: bool) -> list[str]:
 
 
 def _search(conn: psycopg.Connection, question: str, min_similarity: float) -> list[str]:
-    result = search(conn, question, min_similarity=min_similarity)
-    if result.best_similarity is None:
-        return ["No documents saved yet."]
-    if not result.passages:
-        return [
-            f"Nothing close enough: the best similarity was {result.best_similarity:.2f},"
-            f" below the threshold {min_similarity:.2f}."
-        ]
-    lines = []
-    for number, p in enumerate(result.passages, 1):
-        saved = local_date(p.saved_at)
-        page = f", PDF page {p.page}" if p.page is not None else ""
-        lines.append(
-            f"{number}. {p.similarity:.2f}  {p.title}  ({p.source}{page}, saved {saved})"
-        )
-        if p.heading:
-            lines.append(f"   Section: {p.heading}")
-        text = " ".join(p.text.split())
-        more = "..." if len(text) > SHOWN_CHARACTERS else ""
-        lines.append("   " + text[:SHOWN_CHARACTERS] + more)
-    return lines
+    """The same text `/search` returns as `formatted` (one formatter, `ask.format_search`)."""
+    return format_search(search(conn, question, min_similarity=min_similarity)).splitlines()
 
 
 def _ask(conn: psycopg.Connection, question: str) -> list[str]:
