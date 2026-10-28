@@ -13,15 +13,17 @@ import time
 import traceback
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Literal
 
 import discord
 from discord import app_commands
 
 from agila.bot.client import AgilaApi, ApiError
-from agila.bot.messages import ask_reply, ping_reply, save_reply, split
+from agila.bot.messages import ask_reply, change_reply, list_reply, ping_reply, save_reply, split
 
 NO_PINGS = discord.AllowedMentions.none()
 EMPTY = "Agila's API sent an empty reply."
+MAX_ID = 2**53 - 1  # Discord's largest INTEGER option (research V151)
 log = logging.getLogger("agila.bot")
 
 
@@ -135,10 +137,50 @@ async def save_text(
     await _save(interaction, "save-text", lambda: api.save_text(title, text, label, replace))
 
 
+async def list_documents(
+    interaction: discord.Interaction, api: AgilaApi, status: str = "active"
+) -> None:
+    """FR27 `/list`: the newest 15 with that status; private filtering is the API's (block p)."""
+    started = time.perf_counter()
+    await interaction.response.defer(thinking=True)
+    try:
+        documents = await api.list_documents(status)
+        text, result = list_reply(documents, status), f"result=listed rows={len(documents)}"
+    except ApiError as exc:
+        text, result = exc.sentence, f"error={exc.kind}"
+    _done("list", started, await _post(interaction, text, first=True), result)
+
+
+async def _change(
+    interaction: discord.Interaction, command: str, call: Callable[[], Awaitable[dict]]
+) -> None:
+    started = time.perf_counter()
+    await interaction.response.defer(thinking=True)
+    try:
+        changed = await call()
+        text = change_reply(changed)
+        result = "result=dry-run" if changed.get("deleted") is False else "result=done"
+    except ApiError as exc:
+        text, result = exc.sentence, f"error={exc.kind}"
+    _done(command, started, await _post(interaction, text, first=True), result)
+
+
+async def archive(interaction: discord.Interaction, api: AgilaApi, document_id: int) -> None:
+    """FR27 `/archive`; unarchive stays on the laptop (U85)."""
+    await _change(interaction, "archive", lambda: api.archive(document_id))
+
+
+async def delete(
+    interaction: discord.Interaction, api: AgilaApi, document_id: int, confirm: bool = False
+) -> None:
+    """FR27 `/delete`: without `confirm` the API deletes nothing and says what would go."""
+    await _change(interaction, "delete", lambda: api.delete(document_id, confirm))
+
+
 def build_tree(
     client: discord.Client, api: AgilaApi, allowed: frozenset[int], guild: discord.Object
 ) -> AllowListTree:
-    """The four commands, registered for one server only (guild commands, DEVIATIONS 56)."""
+    """The six commands, registered for one server only (guild commands, DEVIATIONS 56)."""
     tree = AllowListTree(client, allowed)
 
     @app_commands.command(name="ping", description="Check that Agila and the laptop stack answer.")
@@ -182,6 +224,34 @@ def build_tree(
     ) -> None:
         await save_text(interaction, api, title, text, label, replace)
 
-    for command in (ping_command, ask_command, save):
+    @app_commands.command(name="list", description="List your newest saved documents (up to 15).")
+    @app_commands.describe(status="Which documents (default: active)")
+    async def list_command(
+        interaction: discord.Interaction, status: Literal["active", "archived", "all"] = "active"
+    ) -> None:
+        await list_documents(interaction, api, status)
+
+    @app_commands.command(name="archive", description="Archive one document (see /list for ids).")
+    @app_commands.rename(document_id="id")
+    @app_commands.describe(document_id="The document id")
+    async def archive_command(
+        interaction: discord.Interaction, document_id: app_commands.Range[int, 1, MAX_ID]
+    ) -> None:
+        await archive(interaction, api, document_id)
+
+    @app_commands.command(name="delete", description="Delete one document and its passages.")
+    @app_commands.rename(document_id="id")
+    @app_commands.describe(
+        document_id="The document id",
+        confirm="True deletes it; left out, only shows what would go (default: False)",
+    )
+    async def delete_command(
+        interaction: discord.Interaction,
+        document_id: app_commands.Range[int, 1, MAX_ID],
+        confirm: bool = False,
+    ) -> None:
+        await delete(interaction, api, document_id, confirm)
+
+    for command in (ping_command, ask_command, save, list_command, archive_command, delete_command):
         tree.add_command(command, guild=guild)
     return tree

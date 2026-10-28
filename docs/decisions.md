@@ -119,3 +119,13 @@ Dev half only (10 questions: 7 answerable, 3 unanswerable), raw top 3 from `eval
 ## Parked after block o part 1 (Eo, 2026-10-27; PRD section 4 backlog, not built)
 - Compact /ask for other people: a 'thinking' placeholder, then one edited message with the answer and a one-line source; passages and similarity scores only behind a detail option or the CLI. Would revise FR10, FR27, UC3 and the FR27 check. Not needed while Eo is the only user.
 - Bot error reply: an unexpected error inside a Discord command is only logged, so the user can see 'thinking…' until Discord gives up (up to 15 minutes). A one-line error reply would fix it.
+
+## Day 12: list, archive, delete, private, stale, n8n (Eo, 2026-10-28; research 2s, plan "Block o part 2, p, q, r plan")
+- **Unarchive** stays CLI-only: no API route and no Discord command (U85).
+- **`/delete`** takes `id` and an optional `confirm` (default False), which maps onto the API's dry-run rule; no confirm button (a button would also need its own allow-list check, V139).
+- **`/list`** shows the newest 15 documents, active by default, with an optional `status` choice (active, archived, all); a title over 60 characters is cut to its first 59 characters plus `…`; when more exist, the last line is `Showing 15 of N. Use the CLI list for all.` The API adds `source_type` and `saved_date` (the laptop's date) to each item and keeps `status=all` as its default.
+- **Archive over the API:** `POST /documents/{id}/archive`, reply = the title, `export_warning` and the CLI's sentence `Archived document N "<title>".`
+- **Splitting** of long replies is proven by the unit test (a 4,500-character answer arrives as 3 pieces in order), not by a live Discord reply (DEVIATIONS 59).
+- **Private (block p):** `--private` is CLI-only and only tightens (public to private, never back); a Discord or n8n save that matches a private document is refused with one sentence naming no title; a private document asked for over Discord or n8n gets `No document with id N.`; private notes are exported with `visibility: laptop_only`, public notes get no such line; a private save may supersede a public copy.
+- **`/stale` (block q):** `include_private=true` from Discord or n8n is HTTP 400.
+- **n8n (block r):** `n8nio/n8n:2.43.6` pinned by digest (2.45.x decided at block s); telemetry off; a fresh Compose volume (the Day 2 `n8n_data` volume and container are kept); n8n calls `http://api:8000` (DEVIATIONS 62); `n8n/` goes into `.gitignore`.

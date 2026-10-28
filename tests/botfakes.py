@@ -51,11 +51,13 @@ class FakeApi:
         self.events = events
         self.routes = routes
         self.bodies: dict[str, bytes] = {}
+        self.queries: dict[str, dict[str, str]] = {}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         route = f"{request.method} {request.url.path}"
         self.events.append(("request", route))
         self.bodies[route] = request.content
+        self.queries[route] = dict(request.url.params)
         answer = self.routes[route]
         if isinstance(answer, Exception):
             raise answer

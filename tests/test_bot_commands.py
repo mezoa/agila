@@ -11,7 +11,7 @@ import pytest
 from botfakes import EO, STRANGER, FakeInteraction, run, sent
 from discord import app_commands
 
-from agila.bot import client, commands
+from agila.bot import client, commands, messages
 from agila.bot.commands import AllowListTree, build_tree
 
 PASSAGES = "1. 0.80  llm-wiki  (https://example.test, saved 2026-10-21)\n   Short passage text."
@@ -24,6 +24,16 @@ ANSWER = {
 REFUSAL_TEXT = "I couldn't find this in your saved material."
 BUSY = "Agila is answering another question right now. Try again in a minute."
 QUESTION = "secret question words"
+
+
+DOC = {
+    "document_id": 7,
+    "title": "A saved page",
+    "saved_date": "2026-10-28",
+    "status": "active",
+    "visibility": "anywhere",
+    "source_type": "web",
+}
 
 
 def ok(body) -> httpx.Response:
@@ -79,6 +89,17 @@ HANDLERS = {
         commands.save_text,
         {"POST /save/text": ok({"message": "Saved T: 1 chunks", "outcome": "saved"})},
         ("T", "secret saved text"),
+    ),
+    "list": (commands.list_documents, {"GET /documents": ok([])}, ()),
+    "archive": (
+        commands.archive,
+        {"POST /documents/7/archive": ok({"title": "T", "message": 'Archived document 7 "T".'})},
+        (7,),
+    ),
+    "delete": (
+        commands.delete,
+        {"DELETE /documents/7": ok({"deleted": False, "message": "Would delete document 7."})},
+        (7,),
     ),
 }
 
@@ -165,6 +186,9 @@ def test_every_message_is_sent_with_mentions_that_parse_nothing(name):
         "POST /ask": ok(dict(ANSWER, formatted=PINGS)),
         "POST /save/url": ok({"message": PINGS, "outcome": "saved"}),
         "POST /save/text": ok({"message": PINGS, "outcome": "saved"}),
+        "GET /documents": ok([DOC | {"title": PINGS}]),
+        "POST /documents/7/archive": ok({"title": PINGS, "message": PINGS}),
+        "DELETE /documents/7": ok({"deleted": False, "message": PINGS}),
     }
     events, _ = run(handler, routes, *args)
     messages = [e[1] for e in events if e[0] in ("edit", "followup")]
@@ -236,7 +260,10 @@ def _limits(command) -> dict:
 def test_the_commands_are_guild_commands_only():
     tree = _tree()
     assert sorted(c.name for c in tree.get_commands(guild=discord.Object(42))) == [
+        "archive",
         "ask",
+        "delete",
+        "list",
         "ping",
         "save",
     ]
@@ -263,6 +290,121 @@ def test_the_option_lengths():
     }
 
 
+STRING, INTEGER, BOOLEAN = 3, 4, 5  # Discord option types
+
+
+def _sent_options(name: str) -> list[dict]:
+    """The options of one command exactly as `tree.sync` sends them to Discord (V152: a renamed
+    option keeps its Python name in `parameters`, so tests read the payload instead)."""
+    tree = _tree()
+    command = tree.get_command(name, guild=discord.Object(42))
+    keys = ("name", "type", "required", "choices", "min_value", "max_value")
+    return [{k: o[k] for k in keys if k in o} for o in command.to_dict(tree)["options"]]
+
+
+def test_list_sends_one_optional_status_choice():
+    choices = [{"name": v, "value": v} for v in ("active", "archived", "all")]
+    assert _sent_options("list") == [
+        {"name": "status", "type": STRING, "required": False, "choices": choices}
+    ]
+    # Discord sends nothing for a left-out option, so the handler's default applies (U86)
+    status = _tree().get_command("list", guild=discord.Object(42)).parameters[0]
+    assert status.default == "active"
+
+
+def test_archive_and_delete_send_a_required_id_and_delete_an_optional_confirm():
+    document_id = {
+        "name": "id",
+        "type": INTEGER,
+        "required": True,
+        "min_value": 1,
+        "max_value": 2**53 - 1,  # Discord's INTEGER limit (V151)
+    }
+    assert _sent_options("archive") == [document_id]
+    assert _sent_options("delete") == [
+        document_id,
+        {"name": "confirm", "type": BOOLEAN, "required": False},
+    ]
+    confirm = _tree().get_command("delete", guild=discord.Object(42)).parameters[1]
+    assert confirm.default is False
+
+
+# --- /list, /archive, /delete (block o part 2) ---
+
+
+def test_list_asks_for_active_documents_by_default_and_shows_the_lines():
+    events, fake = run(commands.list_documents, {"GET /documents": ok([DOC])})
+    assert fake.queries["GET /documents"] == {"status": "active"}
+    assert sent(events) == ["7  2026-10-28  web  A saved page"]
+
+
+@pytest.mark.parametrize("status", ["archived", "all"])
+def test_list_sends_the_chosen_status(status):
+    events, fake = run(commands.list_documents, {"GET /documents": ok([])}, status)
+    assert fake.queries["GET /documents"] == {"status": status}
+    assert sent(events) == [messages.NOTHING_LISTED[status]]
+
+
+def test_list_of_20_shows_15_lines_and_the_cli_line_in_one_message():
+    many = [DOC | {"document_id": n} for n in range(20, 0, -1)]
+    events, _ = run(commands.list_documents, {"GET /documents": ok(many)})
+    (text,) = sent(events)
+    assert len(text.splitlines()) == 16
+    assert text.endswith("Showing 15 of 20. Use the CLI list for all.")
+
+
+def test_delete_without_confirm_asks_for_a_dry_run_and_shows_its_sentence():
+    dry = (
+        'Would delete document 7 "T" (text, 1 chunks). Nothing deleted.'
+        " Send it again with confirm=true to delete it."
+    )
+    routes = {"DELETE /documents/7": ok({"deleted": False, "message": dry})}
+    events, fake = run(commands.delete, routes, 7)
+    assert fake.queries["DELETE /documents/7"] == {"confirm": "false"}
+    assert sent(events) == [dry]
+
+
+def test_delete_with_confirm_deletes_and_shows_the_export_warning():
+    body = {
+        "deleted": True,
+        "message": 'Deleted document 7 "T" and its 1 chunks.',
+        "export_warning": "Delete by hand: x.md.",
+    }
+    events, fake = run(commands.delete, {"DELETE /documents/7": ok(body)}, 7, True)
+    assert fake.queries["DELETE /documents/7"] == {"confirm": "true"}
+    assert sent(events) == ['Deleted document 7 "T" and its 1 chunks.\nDelete by hand: x.md.']
+
+
+def test_delete_shows_the_api_not_found_sentence():
+    routes = {"DELETE /documents/7": httpx.Response(404, json={"detail": "No document with id 7."})}
+    events, _ = run(commands.delete, routes, 7, True)
+    assert sent(events) == ["No document with id 7."]
+
+
+def test_archive_posts_the_message_then_the_export_warning():
+    body = {"title": "T", "message": 'Archived document 7 "T".', "export_warning": "Pending."}
+    events, fake = run(commands.archive, {"POST /documents/7/archive": ok(body)}, 7)
+    assert [e for e in events if e[0] == "request"] == [("request", "POST /documents/7/archive")]
+    assert sent(events) == ['Archived document 7 "T".\nPending.']
+
+
+def test_archive_refused_shows_the_api_sentence():
+    detail = "Document 7 is archived; only active documents can be archived."
+    routes = {"POST /documents/7/archive": httpx.Response(400, json={"detail": detail})}
+    events, _ = run(commands.archive, routes, 7)
+    assert sent(events) == [detail]
+
+
+@pytest.mark.parametrize("name", ["list", "archive", "delete"])
+def test_a_stranger_gets_nothing_from_the_new_commands(name):
+    """FR40 through the real tree: the check runs before the command, so no defer and no
+    request (the handler is never reached)."""
+    events: list = []
+    tree = AllowListTree(_client(), frozenset({EO}))
+    allowed = asyncio.run(tree.interaction_check(FakeInteraction(events, STRANGER, name)))
+    assert (allowed, events) == (False, [])
+
+
 # --- the log (NFR8) ---
 
 
@@ -274,6 +416,20 @@ def test_the_log_never_holds_the_question_text_link_or_key(name, caplog):
     assert f"command={name.replace('_', '-')}" in caplog.text
     for leak in (QUESTION, "secret saved text", "example.test", "test-key-not-a-secret", "http"):
         assert leak not in caplog.text
+
+
+def test_list_archive_and_delete_log_no_title_or_id(caplog):
+    caplog.set_level(logging.DEBUG, logger="agila.bot")
+    secret = DOC | {"document_id": 987654, "title": "secret title words"}
+    message = {"title": secret["title"], "message": 'Archived document 987654 "secret title".'}
+    run(commands.list_documents, {"GET /documents": ok([secret])})
+    run(commands.archive, {"POST /documents/987654/archive": ok(message)}, 987654)
+    run(commands.delete, {"DELETE /documents/987654": ok(message | {"deleted": True})}, 987654)
+    assert "command=list result=listed rows=1" in caplog.text
+    assert "command=archive result=done" in caplog.text
+    assert "command=delete result=done" in caplog.text
+    assert "secret title" not in caplog.text
+    assert "987654" not in caplog.text
 
 
 def test_an_api_error_is_logged_as_its_class_only(caplog):

@@ -52,6 +52,9 @@ CALLS = {
     "ask": lambda api: api.ask(QUESTION),
     "save_link": lambda api: api.save_link("https://example.test/a"),
     "save_text": lambda api: api.save_text("Title", "secret saved text"),
+    "list_documents": lambda api: api.list_documents(),
+    "archive": lambda api: api.archive(7),
+    "delete": lambda api: api.delete(7),
 }
 
 
@@ -87,6 +90,9 @@ def test_the_client_ignores_proxy_settings_from_the_environment():
         ("ask", "POST", "/ask", 270),
         ("save_link", "POST", "/save/url", 120),
         ("save_text", "POST", "/save/text", 120),
+        ("list_documents", "GET", "/documents", 30),
+        ("archive", "POST", "/documents/7/archive", 30),
+        ("delete", "DELETE", "/documents/7", 30),
     ],
 )
 def test_each_call_uses_its_route_and_timeout(name, method, path, read_seconds):
@@ -139,6 +145,46 @@ def test_save_text_keeps_a_given_label():
     fake = FakeApi()
     _run(fake, lambda api: api.save_text("Title", "Text.", label="my-label"))
     assert json.loads(fake.requests[0].content)["label"] == "my-label"
+
+
+@pytest.mark.parametrize("status", ["active", "archived", "all"])
+def test_list_documents_sends_the_status(status):
+    fake = FakeApi(httpx.Response(200, json=[{"document_id": 1}]))
+    assert _run(fake, lambda api: api.list_documents(status)) == [{"document_id": 1}]
+    assert dict(fake.requests[0].url.params) == {"status": status}
+
+
+def test_list_documents_asks_for_active_by_default():
+    fake = FakeApi(httpx.Response(200, json=[]))
+    _run(fake, CALLS["list_documents"])
+    assert dict(fake.requests[0].url.params) == {"status": "active"}
+
+
+@pytest.mark.parametrize(("confirm", "sent"), [(False, "false"), (True, "true")])
+def test_delete_sends_confirm(confirm, sent):
+    fake = FakeApi()
+    _run(fake, lambda api: api.delete(7, confirm))
+    (request,) = fake.requests
+    assert (request.url.path, dict(request.url.params)) == ("/documents/7", {"confirm": sent})
+
+
+def test_delete_is_a_dry_run_unless_confirmed():
+    fake = FakeApi()
+    _run(fake, CALLS["delete"])
+    assert dict(fake.requests[0].url.params) == {"confirm": "false"}
+
+
+@pytest.mark.parametrize("name", ["archive", "delete"])
+def test_an_unknown_id_shows_the_api_not_found_sentence(name):
+    response = httpx.Response(404, json={"detail": "No document with id 7."})
+    error = _error(FakeApi(response), CALLS[name])
+    assert (error.sentence, error.kind) == ("No document with id 7.", "HTTP 404")
+
+
+def test_archive_sends_no_body():
+    fake = FakeApi()
+    _run(fake, CALLS["archive"])
+    assert fake.requests[0].content == b""
 
 
 def test_health_returns_the_body_also_on_503():

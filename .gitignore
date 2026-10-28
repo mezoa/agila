@@ -26,3 +26,6 @@ eval/runs/
 eval/answer-key.md
 eval/hit-phrases.txt
 package-lock.json
+
+#claude
+.claude/settings.local.json

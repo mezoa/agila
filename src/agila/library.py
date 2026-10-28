@@ -21,6 +21,7 @@ from agila.web import WebError, extract_page, fetch_html
 
 ACTIVE_IDENTITY_INDEX = "documents_active_identity"
 MAX_WEB_CHUNKS = 200  # FR2 [assumed]: web pages needing more are refused (text, Markdown, PDF not)
+LIST_STATUSES = ("all", "active", "archived")
 H1 = re.compile(r"^#[ \t]+(.*\S)[ \t]*$")
 
 
@@ -43,6 +44,7 @@ class Listed:
     saved_at: datetime
     status: str
     visibility: str
+    source_type: str
 
 
 @dataclass(frozen=True)
@@ -428,13 +430,18 @@ def _documents(ids: tuple[int, ...]) -> str:
     return "documents " + ", ".join(str(i) for i in ids)
 
 
-def list_documents(conn: psycopg.Connection) -> list[Listed]:
-    """FR18: every document in the default space, whatever its status, newest first."""
+def list_documents(conn: psycopg.Connection, status: str = "all") -> list[Listed]:
+    """FR18: the documents in the default space, newest first. `status` is "all" (every status,
+    superseded included), "active" or "archived" (Discord `/list`, plan "Block o part 2")."""
+    if status not in LIST_STATUSES:
+        raise ValueError(f"Unknown status {status!r}; use one of {', '.join(LIST_STATUSES)}.")
     with conn.transaction():
         rows = conn.execute(
-            "SELECT d.id, d.title, d.saved_at, d.status, d.visibility"
+            "SELECT d.id, d.title, d.saved_at, d.status, d.visibility, d.source_type"
             " FROM documents d JOIN spaces s ON s.id = d.space_id WHERE s.name = 'default'"
-            " ORDER BY d.saved_at DESC, d.id DESC"
+            " AND (%s = 'all' OR d.status = %s)"
+            " ORDER BY d.saved_at DESC, d.id DESC",
+            (status, status),
         ).fetchall()
     return [Listed(*row) for row in rows]
 

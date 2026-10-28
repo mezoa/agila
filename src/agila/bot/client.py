@@ -65,6 +65,18 @@ class AgilaApi:
         body = {"title": title, "label": label or title, "text": text, "replace": replace}
         return await self._call("POST", "/save/text", SAVE_SECONDS, save=True, json=body)
 
+    async def list_documents(self, status: str = "active") -> list[dict]:
+        """The documents with that status (`active`, `archived` or `all`), newest first."""
+        return await self._call("GET", "/documents", OTHER_SECONDS, params={"status": status})
+
+    async def archive(self, document_id: int) -> dict:
+        return await self._call("POST", f"/documents/{document_id}/archive", OTHER_SECONDS)
+
+    async def delete(self, document_id: int, confirm: bool = False) -> dict:
+        """Without `confirm` the API deletes nothing and says what would go (FR20)."""
+        params = {"confirm": "true" if confirm else "false"}
+        return await self._call("DELETE", f"/documents/{document_id}", OTHER_SECONDS, params=params)
+
     async def _call(
         self,
         method: str,
@@ -74,7 +86,7 @@ class AgilaApi:
         ok: tuple[int, ...] = (200,),
         save: bool = False,
         **kwargs,
-    ) -> dict:
+    ) -> dict | list:
         timeout = httpx.Timeout(seconds, connect=CONNECT_SECONDS)
         try:
             response = await self._client.request(method, path, timeout=timeout, **kwargs)

@@ -438,6 +438,38 @@ def test_list_shows_title_date_status_and_visibility(conn):
     assert rows["Old"].document_id == old.document_id
 
 
+def test_list_documents_filters_by_status(conn):
+    save_text(conn, "Old", "a", "First version.", FakeEmbedder())
+    new = save_text(conn, "New", "a", "Second version.", FakeEmbedder(), replace=True)
+    kept = save_text(conn, "Kept", "b", "Archived text.", FakeEmbedder())
+    library.archive(conn, kept.document_id)
+
+    def titles(status):
+        return [d.title for d in library.list_documents(conn, status)]
+
+    assert titles("active") == ["New"]
+    assert titles("archived") == ["Kept"]
+    assert titles("all") == ["Kept", "New", "Old"]  # newest first, superseded included
+    assert [d.title for d in library.list_documents(conn)] == titles("all")  # the default
+    assert library.list_documents(conn, "active")[0].document_id == new.document_id
+
+
+def test_list_documents_refuses_an_unknown_status(conn):
+    with pytest.raises(ValueError, match="Unknown status 'superseded'"):
+        library.list_documents(conn, "superseded")
+
+
+def test_listed_documents_carry_their_source_type(conn, tmp_path):
+    save_text(conn, "A note", "n", "Plain pasted text.", FakeEmbedder())
+    path = tmp_path / "notes.md"
+    path.write_text("# Notes\n\nSome Markdown text.", encoding="utf-8")
+    save_markdown(conn, path, embedder=FakeEmbedder())
+    assert {d.title: d.source_type for d in library.list_documents(conn)} == {
+        "A note": "text",
+        "Notes": "markdown",
+    }
+
+
 def test_archive_and_unarchive_round_trip(conn):
     saved = save_text(conn, "T", "L", "Some text to keep.", FakeEmbedder())
     before = _vectors(conn, saved.document_id)

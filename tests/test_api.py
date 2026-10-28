@@ -9,7 +9,7 @@ import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from agila import api, db, llm, questions
+from agila import api, db, export, llm, questions
 from agila.ask import format_search
 from agila.retrieval import Passage, SearchResult
 
@@ -81,7 +81,7 @@ def test_a_missing_empty_or_wrong_key_gets_one_401_sentence(headers):
 
 
 def test_the_right_key_is_accepted_in_any_letter_case_of_the_header_name(monkeypatch):
-    monkeypatch.setattr(api, "list_documents", lambda conn: [])
+    monkeypatch.setattr(api, "list_documents", lambda conn, status="all": [])
     client = TestClient(_app())
     assert client.get("/documents", headers=GOOD).json() == []
     assert client.get("/documents", headers={"x-api-key": KEY}).status_code == 200
@@ -113,6 +113,26 @@ def test_every_route_except_health_needs_the_key():
             assert response.status_code == 401, route.path
 
 
+def test_archive_needs_the_key():
+    paths = {(r.path, *r.methods) for r in _app().routes if isinstance(r, APIRoute)}
+    assert ("/documents/{document_id}/archive", "POST") in paths
+    assert TestClient(_app()).post("/documents/1/archive").status_code == 401
+
+
+def test_documents_status_must_be_active_archived_or_all(monkeypatch):
+    seen = []
+    monkeypatch.setattr(api, "list_documents", lambda conn, status: seen.append(status) or [])
+    client = TestClient(_app())
+    assert client.get("/documents", headers=GOOD).status_code == 200
+    for status in ("active", "archived", "all"):
+        assert client.get("/documents", params={"status": status}, headers=GOOD).json() == []
+    assert seen == ["all", "active", "archived", "all"]  # `all` is the default (RQ3)
+    for bad in ("superseded", "ACTIVE", ""):
+        response = client.get("/documents", params={"status": bad}, headers=GOOD)
+        assert response.status_code == 422, bad
+    assert len(seen) == 4
+
+
 @pytest.mark.parametrize("value", [None, "", "   "])
 def test_the_app_refuses_to_start_without_a_key(monkeypatch, value):
     monkeypatch.delenv("AGILA_API_KEY", raising=False)
@@ -124,7 +144,7 @@ def test_the_key_comes_from_the_environment(monkeypatch):
     monkeypatch.setenv("AGILA_API_KEY", KEY)
     app = api.create_app(warm_up=_no_warm_up)
     app.dependency_overrides[api.connection] = lambda: None
-    monkeypatch.setattr(api, "list_documents", lambda conn: [])
+    monkeypatch.setattr(api, "list_documents", lambda conn, status="all": [])
     assert TestClient(app).get("/documents", headers=GOOD).status_code == 200
 
 
@@ -487,3 +507,89 @@ def test_delete_of_an_unknown_id_is_404_with_one_sentence(conn, empty_db, confir
         "/documents/999", params={"confirm": confirm}, headers=GOOD
     )
     assert (response.status_code, response.json()) == (404, {"detail": "No document with id 999."})
+
+
+# --- database: list by status, archive (block o part 2) ---
+
+
+def _saving_client(empty_db):
+    """Like `_client`, but saves embed with the fake embedder (no model is loaded)."""
+    app = api.create_app(
+        KEY, warm_up=_no_warm_up, model=ScriptedModel(), embedder=SameVectorEmbedder()
+    )
+
+    def test_connection():
+        with db.connect(dbname=empty_db) as c:
+            yield c
+
+    app.dependency_overrides[api.connection] = test_connection
+    return TestClient(app)
+
+
+@pytest.mark.db
+def test_documents_list_has_source_type_and_saved_date(conn, empty_db):
+    document = _note(conn)
+    (saved_at,) = conn.execute("SELECT saved_at FROM documents").fetchone()
+    conn.commit()
+    (item,) = _client(empty_db).get("/documents", headers=GOOD).json()
+    assert (item["document_id"], item["source_type"]) == (document, "text")
+    assert item["saved_date"] == export.local_date(saved_at)  # the laptop's date, YYYY-MM-DD
+
+
+@pytest.mark.db
+def test_documents_list_filters_by_status(conn, empty_db):
+    client = _saving_client(empty_db)
+    kept_note = {"title": "Kept", "label": "k", "text": TEXT}
+    kept = client.post("/save/text", json=kept_note, headers=GOOD).json()
+    client.post("/save/text", json={"title": "Live", "label": "l", "text": TEXT}, headers=GOOD)
+    client.post(f"/documents/{kept['document_id']}/archive", headers=GOOD)
+
+    def titles(**params):
+        return [d["title"] for d in client.get("/documents", params=params, headers=GOOD).json()]
+
+    assert titles(status="active") == ["Live"]
+    assert titles(status="archived") == ["Kept"]
+    assert titles() == titles(status="all") == ["Live", "Kept"]
+
+
+@pytest.mark.db
+def test_archive_returns_title_and_the_cli_sentence(conn, empty_db):
+    document = _note(conn)
+    response = _client(empty_db).post(f"/documents/{document}/archive", headers=GOOD)
+    assert response.status_code == 200
+    assert response.json() == {
+        "title": "Note",
+        "export_warning": None,
+        "message": f'Archived document {document} "Note".',
+    }
+    assert conn.execute("SELECT status FROM documents").fetchone() == ("archived",)
+
+
+@pytest.mark.db
+def test_archive_of_an_archived_document_is_400_with_the_library_sentence(conn, empty_db):
+    document = _note(conn)
+    client = _client(empty_db)
+    client.post(f"/documents/{document}/archive", headers=GOOD)
+    response = client.post(f"/documents/{document}/archive", headers=GOOD)
+    assert (response.status_code, response.json()) == (
+        400,
+        {"detail": f"Document {document} is archived; only active documents can be archived."},
+    )
+
+
+@pytest.mark.db
+def test_archive_of_an_unknown_id_is_404(conn, empty_db):
+    response = _client(empty_db).post("/documents/999/archive", headers=GOOD)
+    assert (response.status_code, response.json()) == (404, {"detail": "No document with id 999."})
+
+
+@pytest.mark.db
+def test_archive_rewrites_the_note_status(conn, empty_db, vault):
+    client = _saving_client(empty_db)
+    note_body = {"title": "Note", "label": "L", "text": TEXT}
+    saved = client.post("/save/text", json=note_body, headers=GOOD).json()
+    note = vault / export.note_name("Note", saved["document_id"])
+    assert "status: active" in note.read_text(encoding="utf-8")
+    body = client.post(f"/documents/{saved['document_id']}/archive", headers=GOOD).json()
+    assert body["export_warning"] is None
+    assert "status: archived" in note.read_text(encoding="utf-8")

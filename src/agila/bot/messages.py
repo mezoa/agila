@@ -7,6 +7,13 @@ Every reply is built from fields the API already returns (`formatted`, `text`, `
 LIMIT = 1900  # characters per message; Discord allows 2,000 (DEVIATIONS 57)
 SENTENCE_ENDS = (". ", "? ", "! ")
 ALLOWED_VARIABLE = "DISCORD_ALLOWED_USER_IDS"
+LIST_ROWS = 15  # Eo, 12.R1 Q3
+TITLE_CHARACTERS = 60
+NOTHING_LISTED = {
+    "active": "No active documents.",
+    "archived": "No archived documents.",
+    "all": "No documents saved yet.",
+}
 
 
 def allowed_ids(text: str | None) -> frozenset[int]:
@@ -64,6 +71,34 @@ def ask_reply(answer: dict) -> str:
 def save_reply(saved: dict) -> str:
     """The API's own save sentence, then its label warning and export warning when set."""
     lines = [saved["message"], saved.get("warning"), saved.get("export_warning")]
+    return "\n".join(line for line in lines if line)
+
+
+def list_reply(documents: list[dict], status: str) -> str:
+    """`/list`: the newest LIST_ROWS documents the API returned (newest first already), one line
+    each, with the status column only for `all`; a last line when more exist (DEVIATIONS 58)."""
+    if not documents:
+        return NOTHING_LISTED[status]
+    lines = []
+    for d in documents[:LIST_ROWS]:
+        state = f"{d['status']}  " if status == "all" else ""
+        lines.append(
+            f"{d['document_id']}  {d['saved_date']}  {state}{d['source_type']}  "
+            + _short(d["title"])
+        )
+    if len(documents) > LIST_ROWS:
+        lines.append(f"Showing {LIST_ROWS} of {len(documents)}. Use the CLI list for all.")
+    return "\n".join(lines)
+
+
+def _short(title: str) -> str:
+    """At most TITLE_CHARACTERS: a longer title keeps its first 59 characters and gets `…`."""
+    return title if len(title) <= TITLE_CHARACTERS else title[: TITLE_CHARACTERS - 1] + "…"
+
+
+def change_reply(changed: dict) -> str:
+    """`/archive` and `/delete`: the API's own sentence, then its export warning when set."""
+    lines = [changed["message"], changed.get("export_warning")]
     return "\n".join(line for line in lines if line)
 
 

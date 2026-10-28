@@ -1,4 +1,5 @@
-"""The web API (FR26): save, ask, search, list and delete behind a key; `/health` and `/docs` open.
+"""The web API (FR26): save, ask, search, list, archive and delete behind a key; `/health` and
+`/docs` open.
 
     uv run --env-file .env python -m agila.api      (serves http://127.0.0.1:8000, /docs)
 
@@ -17,7 +18,7 @@ from collections.abc import Callable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from types import ModuleType
-from typing import Annotated
+from typing import Annotated, Literal
 
 import psycopg
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, Security
@@ -28,10 +29,12 @@ from pydantic import BaseModel
 from agila import db, llm
 from agila.ask import Model, format_answer, format_search
 from agila.embed import Embedder
+from agila.export import local_date
 from agila.library import (
     LibraryError,
     NotFound,
     SaveError,
+    archive,
     delete_document,
     describe,
     document_info,
@@ -169,8 +172,17 @@ def create_app(
         return asdict(result) | {"formatted": format_search(result)}
 
     @api.get("/documents")
-    def documents(conn: Conn) -> list[dict]:
-        return [asdict(d) for d in list_documents(conn)]
+    def documents(conn: Conn, status: Literal["active", "archived", "all"] = "all") -> list[dict]:
+        """FR18, newest first. `saved_date` is the laptop's date, so the bot formats no dates."""
+        return [
+            asdict(d) | {"saved_date": local_date(d.saved_at)} for d in list_documents(conn, status)
+        ]
+
+    @api.post("/documents/{document_id}/archive")
+    def archive_document(document_id: int, conn: Conn) -> dict:
+        """FR19 for the bot's `/archive`; unarchive stays CLI-only (U85)."""
+        change = archive(conn, document_id)
+        return asdict(change) | {"message": f'Archived document {document_id} "{change.title}".'}
 
     @api.post("/save/text")
     def save_pasted_text(body: TextIn, conn: Conn) -> dict:

@@ -3,7 +3,15 @@
 import pytest
 
 from agila.bot import messages
-from agila.bot.messages import allowed_ids, ask_reply, ping_reply, save_reply, split
+from agila.bot.messages import (
+    allowed_ids,
+    ask_reply,
+    change_reply,
+    list_reply,
+    ping_reply,
+    save_reply,
+    split,
+)
 
 # --- the allow-list (FR40) ---
 
@@ -202,3 +210,94 @@ def test_the_allow_list_sentence_is_at_most_25_words():
     with pytest.raises(ValueError) as caught:
         allowed_ids("x")
     assert len(str(caught.value).split()) <= 25  # NFR7
+
+
+# --- /list, /archive, /delete (block o part 2) ---
+
+
+def _doc(n, title="A title", status="active", source_type="web"):
+    return {
+        "document_id": n,
+        "title": title,
+        "saved_date": "2026-10-28",
+        "status": status,
+        "source_type": source_type,
+        "visibility": "anywhere",
+    }
+
+
+@pytest.mark.parametrize(
+    ("status", "sentence"),
+    [
+        ("active", "No active documents."),
+        ("archived", "No archived documents."),
+        ("all", "No documents saved yet."),
+    ],
+)
+def test_an_empty_list_is_one_sentence_per_status(status, sentence):
+    assert list_reply([], status) == sentence
+
+
+def test_list_lines_keep_the_api_order_and_show_id_date_type_and_title():
+    docs = [_doc(9, "Newest"), _doc(4, "Middle", source_type="pdf"), _doc(2, "Oldest")]
+    assert list_reply(docs, "active").splitlines() == [
+        "9  2026-10-28  web  Newest",
+        "4  2026-10-28  pdf  Middle",
+        "2  2026-10-28  web  Oldest",
+    ]
+
+
+def test_list_all_adds_the_status_after_the_date():
+    docs = [_doc(5, "Gone", status="archived", source_type="text")]
+    assert list_reply(docs, "all") == "5  2026-10-28  archived  text  Gone"
+
+
+def test_more_than_15_shows_15_and_the_cli_line():
+    lines = list_reply([_doc(n, f"Doc {n}") for n in range(16, 0, -1)], "active").splitlines()
+    assert len(lines) == 16
+    assert lines[0] == "16  2026-10-28  web  Doc 16"
+    assert lines[14] == "2  2026-10-28  web  Doc 2"
+    assert lines[15] == "Showing 15 of 16. Use the CLI list for all."
+
+
+def test_exactly_15_has_no_cli_line():
+    lines = list_reply([_doc(n) for n in range(15)], "active").splitlines()
+    assert len(lines) == 15
+    assert not any(line.startswith("Showing") for line in lines)
+
+
+def test_a_title_over_60_characters_is_cut_to_59_and_an_ellipsis():
+    long = "x" * 59 + "yz"  # 61 characters
+    line = list_reply([_doc(1, long)], "active")
+    title = line.split("  ", 3)[3]
+    assert title == "x" * 59 + "…"
+    assert len(title) == 60
+
+
+def test_a_title_of_exactly_60_characters_is_kept_whole():
+    exact = "t" * 60
+    assert list_reply([_doc(1, exact)], "active").endswith("  " + exact)
+
+
+def test_a_title_with_a_mention_is_kept_as_text():
+    # the send carries allowed_mentions that parse nothing; the text itself is not changed
+    assert list_reply([_doc(1, "@everyone and <@123>")], "active").endswith("@everyone and <@123>")
+
+
+def test_fifteen_long_rows_fit_one_message():
+    docs = [_doc(n, "w" * 200, status="archived", source_type="markdown") for n in range(30)]
+    text = list_reply(docs, "all")
+    assert len(split(text)) == 1
+
+
+def test_change_reply_is_the_message_then_the_export_warning():
+    assert change_reply({"message": 'Archived document 3 "T".', "export_warning": None}) == (
+        'Archived document 3 "T".'
+    )
+    warned = {"message": 'Deleted document 3 "T" and its 1 chunks.', "export_warning": "Delete X."}
+    assert change_reply(warned) == 'Deleted document 3 "T" and its 1 chunks.\nDelete X.'
+
+
+def test_the_list_sentences_are_at_most_25_words():
+    sentences = [*messages.NOTHING_LISTED.values(), "Showing 15 of 120. Use the CLI list for all."]
+    assert all(len(s.split()) <= 25 for s in sentences)  # NFR7
