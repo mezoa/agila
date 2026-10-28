@@ -781,3 +781,110 @@ def test_a_web_save_matching_a_private_document_behaves_as_on_the_laptop(conn, e
     note = {"title": SECRET, "label": "secret", "text": PRIVATE_TEXT}
     body = _asking_client(empty_db).post("/save/text", json=note, headers=GOOD).json()
     assert body["message"] == f"Already saved, unchanged: {SECRET} (document {private})."
+
+
+# --- FR39: /stale (block q) ---
+
+LAPTOP_ONLY = "include_private=true is allowed only from the laptop."
+
+
+@pytest.mark.parametrize("limit", [0, 101, -1])
+def test_stale_limit_must_be_1_to_100(limit):
+    response = TestClient(_app()).get("/stale", params={"limit": limit}, headers=GOOD)
+    assert response.status_code == 422
+
+
+def test_stale_needs_the_key():
+    assert TestClient(_app()).get("/stale").status_code == 401
+
+
+@pytest.mark.parametrize("headers", [DISCORD, N8N], ids=["discord", "n8n"])
+def test_stale_include_private_from_discord_or_n8n_is_refused_before_the_database(
+    monkeypatch, headers
+):
+    monkeypatch.setattr(api, "find_stale", lambda *a, **k: pytest.fail("must not search"))
+    params = {"include_private": "true"}
+    response = TestClient(_app()).get("/stale", params=params, headers=headers)
+    assert (response.status_code, response.json()) == (400, {"detail": LAPTOP_ONLY})
+
+
+def _backdated(conn, title, age, visibility="anywhere"):
+    """A document saved `age` ago by the database clock (the route uses the real `now`)."""
+    conn.execute(
+        "INSERT INTO documents (space_id, title, source_type, source_label, identity_key,"
+        " content_hash, saved_at, visibility) VALUES ((SELECT id FROM spaces LIMIT 1), %s,"
+        " 'text', %s, %s, 'h', now() - %s::interval, %s)",
+        (title, title, f"text:{title}", age, visibility),
+    )
+    conn.commit()
+
+
+@pytest.mark.db
+def test_stale_route_returns_documents_total_and_formatted(conn, empty_db):
+    _backdated(conn, "Old page", "40 days")
+    _backdated(conn, "Ancient page", "13 months")
+    _backdated(conn, "Fresh page", "2 days")
+    body = _client(empty_db).get("/stale", headers=GOOD).json()
+    assert [(d["title"], d["reason"]) for d in body["documents"]] == [
+        ("Ancient page", "older than 12 months"),
+        ("Old page", "never asked"),
+    ]
+    assert body["total"] == 2
+    lines = body["formatted"].splitlines()
+    assert lines[0] == "Stale documents: 2."
+    assert lines[1].endswith("  text  Ancient page  (older than 12 months)")
+    assert set(body["documents"][0]) == {
+        "document_id",
+        "title",
+        "source_type",
+        "saved_at",
+        "last_asked_at",
+        "reason",
+    }
+
+
+@pytest.mark.db
+def test_stale_route_with_nothing_stale_says_so(conn, empty_db):
+    _backdated(conn, "Fresh page", "2 days")
+    body = _client(empty_db).get("/stale", headers=N8N).json()
+    assert body == {"documents": [], "total": 0, "formatted": "Nothing stale this week"}
+
+
+@pytest.mark.db
+def test_stale_route_cuts_at_the_limit_and_says_how_many_exist(conn, empty_db):
+    for n in range(3):
+        _backdated(conn, f"Old {n}", f"{40 + n} days")
+    body = _client(empty_db).get("/stale", params={"limit": 2}, headers=GOOD).json()
+    assert (len(body["documents"]), body["total"]) == (2, 3)
+    assert body["formatted"].endswith("Showing 2 of 3. Use the CLI stale for all.")
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("headers", [DISCORD, N8N], ids=["discord", "n8n"])
+def test_stale_from_discord_or_n8n_with_include_private_is_400(conn, empty_db, headers):
+    _backdated(conn, SECRET, "13 months", "laptop_only")
+    params = {"include_private": "true"}
+    response = _client(empty_db).get("/stale", params=params, headers=headers)
+    assert (response.status_code, response.json()) == (400, {"detail": LAPTOP_ONLY})
+    plain = _client(empty_db).get("/stale", headers=headers).json()
+    assert plain["total"] == 0
+    _never_shown(plain)
+
+
+@pytest.mark.db
+def test_stale_without_a_channel_header_still_omits_private(conn, empty_db):
+    _backdated(conn, SECRET, "13 months", "laptop_only")
+    _backdated(conn, "Public page", "13 months")
+    body = _client(empty_db).get("/stale", headers=GOOD).json()  # no header = web
+    assert [d["title"] for d in body["documents"]] == ["Public page"]
+    assert body["total"] == 1  # not counted either
+    _never_shown(body)
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("headers", [GOOD, WEB], ids=["no header", "web"])
+def test_stale_from_web_with_include_private_lists_it(conn, empty_db, headers):
+    _backdated(conn, SECRET, "13 months", "laptop_only")
+    params = {"include_private": "true"}
+    body = _client(empty_db).get("/stale", params=params, headers=headers).json()
+    assert [d["title"] for d in body["documents"]] == [SECRET]

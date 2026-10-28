@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from agila import cli, db, library, llm, netcheck, questions, retrieval
+from agila import cli, db, library, llm, netcheck, questions, retrieval, stale
 from agila.ask import format_search
 from agila.chunking import CACHE_DIR
 
@@ -649,3 +649,48 @@ def test_private_on_an_unchanged_text_prints_the_now_private_line(conn, empty_db
         f"Already saved, unchanged: Private check (document {document}).\n"
     )
     assert conn.execute("SELECT visibility FROM documents").fetchone() == ("laptop_only",)
+
+
+# --- FR39: stale (block q) ---
+
+
+def test_stale_command_prints_the_shared_text_and_passes_include_private(monkeypatch, capsys):
+    seen = []
+    result = stale.Stale([], 0)
+
+    def fake(conn, **options):
+        seen.append(options)
+        return result
+
+    monkeypatch.setattr(cli, "find_stale", fake)
+    assert cli.main(["stale"], connect=_no_database) == 0
+    assert cli.main(["stale", "--include-private"], connect=_no_database) == 0
+    assert seen == [{"include_private": False}, {"include_private": True}]  # no limit: all
+    assert capsys.readouterr().out == "Nothing stale this week\nNothing stale this week\n"
+
+
+def _old_document(conn, title, visibility="anywhere"):
+    conn.execute(
+        "INSERT INTO documents (space_id, title, source_type, source_label, identity_key,"
+        " content_hash, saved_at, visibility) VALUES ((SELECT id FROM spaces LIMIT 1), %s,"
+        " 'text', %s, %s, 'h', now() - interval '13 months', %s)",
+        (title, title, f"text:{title}", visibility),
+    )
+    conn.commit()
+
+
+@pytest.mark.db
+def test_stale_lists_a_backdated_document(conn, empty_db):
+    _old_document(conn, "Old note")
+    out = _run(["stale"], empty_db).splitlines()
+    assert out[0] == "Stale documents: 1."
+    assert out[1].endswith("  text  Old note  (older than 12 months)")
+    assert len(out) == 2
+
+
+@pytest.mark.db
+def test_stale_include_private_lists_the_private_document(conn, empty_db):
+    _old_document(conn, "Private old note", "laptop_only")
+    assert _run(["stale"], empty_db) == "Nothing stale this week\n"
+    out = _run(["stale", "--include-private"], empty_db)
+    assert "Private old note  (older than 12 months)" in out

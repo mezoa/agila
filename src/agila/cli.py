@@ -48,6 +48,7 @@ from agila.library import (
 )
 from agila.questions import ask_question
 from agila.retrieval import MIN_SIMILARITY, search
+from agila.stale import find_stale, format_stale
 
 MAX_ID = 2**63 - 1  # documents.id is a bigint
 PRIVATE_HELP = "keep it on the laptop: never shown in Discord, n8n or /stale"  # FR41
@@ -92,6 +93,12 @@ def _parser() -> argparse.ArgumentParser:
         save.add_argument("--replace", action="store_true", help=replace_help)
         save.add_argument("--private", action="store_true", help=PRIVATE_HELP)
     sub.add_parser("list", help="list documents with id, date, status, visibility and title")
+    stale = sub.add_parser(
+        "stale", help="active documents never asked about in 30 days, or older than 12 months"
+    )
+    stale.add_argument(
+        "--include-private", action="store_true", help="also list private documents (FR39)"
+    )
     find = sub.add_parser("search", help="show up to 3 saved passages close to a question")
     find.add_argument("question")
     find.add_argument(
@@ -160,6 +167,8 @@ def _manage(conn: psycopg.Connection, args: argparse.Namespace) -> list[str]:
         return _search(conn, args.question, args.min_similarity)
     if args.command == "list":
         return _list(conn)
+    if args.command == "stale":  # FR39: all of them, oldest first; the same text as /stale
+        return format_stale(find_stale(conn, include_private=args.include_private)).splitlines()
     if args.command in ("archive", "unarchive"):
         change = (archive if args.command == "archive" else unarchive)(conn, args.id)
         done = f'{args.command.capitalize()}d document {args.id} "{change.title}".'
@@ -192,7 +201,15 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
         with connect() as conn:
             if args.command == "export":
                 lines, code = _export(conn)
-            elif args.command in ("list", "archive", "unarchive", "delete", "search", "ask"):
+            elif args.command in (
+                "list",
+                "stale",
+                "archive",
+                "unarchive",
+                "delete",
+                "search",
+                "ask",
+            ):
                 lines = _manage(conn, args)
             else:
                 flags = {"replace": args.replace, "private": args.private}

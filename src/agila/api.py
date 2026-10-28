@@ -21,7 +21,7 @@ from types import ModuleType
 from typing import Annotated, Literal
 
 import psycopg
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, Security
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Security
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
@@ -44,6 +44,8 @@ from agila.library import (
 )
 from agila.questions import CHANNELS, ask_question
 from agila.retrieval import MIN_SIMILARITY, search
+from agila.stale import LIMIT as STALE_LIMIT
+from agila.stale import find_stale, format_stale
 
 HOST = "127.0.0.1"  # FR26; the default when AGILA_HOST is unset
 HOST_VARIABLE = "AGILA_HOST"  # the container sets 0.0.0.0; Compose publishes only 127.0.0.1:8000
@@ -51,6 +53,7 @@ PORT = 8000
 KEY_HEADER = "X-API-Key"
 KEY_VARIABLE = "AGILA_API_KEY"
 WRONG_KEY = "Missing or wrong API key."
+LAPTOP_ONLY = "include_private=true is allowed only from the laptop."  # Eo's Q8
 CHANNEL_HEADER = "X-Agila-Channel"  # who is asking, for query_log (DEVIATIONS 54)
 API_CHANNELS = ("web", "discord", "n8n")  # `cli` is written only by the CLI, never over HTTP
 
@@ -251,6 +254,25 @@ def create_app(
             "deleted": True,
             "message": f'Deleted document {info.document_id} "{info.title}" and its'
             f" {info.chunk_count} chunks.",
+        }
+
+    @api.get("/stale")
+    def stale_documents(
+        conn: Conn,
+        channel: Channel,
+        limit: Annotated[int, Query(ge=1, le=100)] = STALE_LIMIT,
+        include_private: bool = False,
+    ) -> dict:
+        """FR39: active documents never asked about and older than 30 days, or older than 12
+        months, oldest first. Private documents only with `include_private=true`, and only from
+        the laptop (`web`); from `discord` or `n8n` that is 400 (FR41, Eo's Q8)."""
+        if include_private and not sees_private(channel):
+            raise HTTPException(400, LAPTOP_ONLY)
+        result = find_stale(conn, limit=limit, include_private=include_private)
+        return {
+            "documents": [asdict(d) for d in result.documents],
+            "total": result.total,
+            "formatted": format_stale(result),
         }
 
     app.include_router(api)
