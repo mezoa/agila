@@ -87,6 +87,8 @@ Not in the 15 days. Kept so nothing is lost.
 - Scanned PDFs and images (OCR), generated images, browser extension, bookmark import, custom web or mobile app, Telegram bot, editing saved content, hybrid search, hosted models.
 - Compact /ask for other people: a 'thinking' placeholder, then one edited message with the answer and a one-line source; passages and similarity scores only behind a detail option or the CLI. Would revise FR10, FR27, UC3 and the FR27 check. Not needed while Eo is the only user.
 - Bot error reply: an unexpected error inside a Discord command is only logged, so the user can see 'thinking…' until Discord gives up (up to 15 minutes). A one-line error reply would fix it.
+- Discord `/save text` help and the private refusal (Eo, 2026-10-28): clearer option descriptions for `label` and `replace` (Eo found them hard to discover), and a plainer sentence than "A private document already uses this link or label; save it from the laptop."
+- Retrieval ranking: a title page can rank above the passage that holds the real definition, so a vague question gets refused (seen 2026-10-28; related to research U62).
 
 ## 5. Tiers, hours and gates
 

@@ -129,3 +129,8 @@ Dev half only (10 questions: 7 answerable, 3 unanswerable), raw top 3 from `eval
 - **Private (block p):** `--private` is CLI-only and only tightens (public to private, never back); a Discord or n8n save that matches a private document is refused with one sentence naming no title; a private document asked for over Discord or n8n gets `No document with id N.`; private notes are exported with `visibility: laptop_only`, public notes get no such line; a private save may supersede a public copy.
 - **`/stale` (block q):** `include_private=true` from Discord or n8n is HTTP 400.
 - **n8n (block r):** `n8nio/n8n:2.43.6` pinned by digest (2.45.x decided at block s); telemetry off; a fresh Compose volume (the Day 2 `n8n_data` volume and container are kept); n8n calls `http://api:8000` (DEVIATIONS 62); `n8n/` goes into `.gitignore`.
+
+## Confirmed at Gate 2 (Eo, 2026-10-28; blocks o part 2 and p as built)
+- **Private documents are CLI-only and tighten-only:** only the CLI sets `--private` (`text`, `markdown`, `url`, `pdf`); nothing makes a private document public again, and a save that supersedes a private copy stays private, with or without `--private` (DEVIATIONS 60). Only the API channel `web` (or no header) sees private documents; `discord` and `n8n` never do.
+- **`/delete` uses a `confirm` option, not a button:** left out, it is a dry run that says what would go; `confirm:True` deletes.
+- **n8n cannot call `/ask`:** the API answers `The n8n channel cannot ask questions; use web or discord.` (400), so `query_log` keeps its three channel values (DEVIATIONS 61).
