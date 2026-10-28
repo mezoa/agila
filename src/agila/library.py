@@ -22,6 +22,9 @@ from agila.web import WebError, extract_page, fetch_html
 ACTIVE_IDENTITY_INDEX = "documents_active_identity"
 MAX_WEB_CHUNKS = 200  # FR2 [assumed]: web pages needing more are refused (text, Markdown, PDF not)
 LIST_STATUSES = ("all", "active", "archived")
+PRIVATE_MATCH = (  # Eo's Q5: names no title, no id
+    "A private document already uses this link or label; save it from the laptop."
+)
 H1 = re.compile(r"^#[ \t]+(.*\S)[ \t]*$")
 
 
@@ -72,6 +75,7 @@ class Saved:
     warning: str | None = None
     page_count: int | None = None
     export_warning: str | None = None
+    made_private: bool = False  # Q4: identical content saved again with `--private`
 
 
 @dataclass(frozen=True)
@@ -100,12 +104,24 @@ def save_text(
     text: str,
     embedder: Embedder | None = None,
     replace: bool = False,
+    private: bool = False,
+    guard_private: bool = False,
 ) -> Saved:
-    """FR1: save pasted text with a title and a source label."""
+    """FR1: save pasted text with a title and a source label. `private` and `guard_private`: see
+    `_save` (FR41)."""
     if not title.strip() or not source_label.strip():
         raise SaveError("A title and a source label are both required.")
     return _save(
-        conn, title.strip(), source_label.strip(), "text", text, False, embedder, replace=replace
+        conn,
+        title.strip(),
+        source_label.strip(),
+        "text",
+        text,
+        False,
+        embedder,
+        replace=replace,
+        private=private,
+        guard_private=guard_private,
     )
 
 
@@ -116,6 +132,8 @@ def save_markdown(
     source_label: str | None = None,
     embedder: Embedder | None = None,
     replace: bool = False,
+    private: bool = False,
+    guard_private: bool = False,
 ) -> Saved:
     """FR4: save a Markdown file. Title defaults to the first '# ' heading, else the file name
     without extension; the source label defaults to the file name with extension."""
@@ -128,7 +146,18 @@ def save_markdown(
         raise SaveError(f"Could not read {path} as UTF-8 text.") from None
     title = (title or "").strip() or _first_heading(text) or path.stem
     label = (source_label or "").strip() or path.name
-    return _save(conn, title, label, "markdown", text, True, embedder, replace=replace)
+    return _save(
+        conn,
+        title,
+        label,
+        "markdown",
+        text,
+        True,
+        embedder,
+        replace=replace,
+        private=private,
+        guard_private=guard_private,
+    )
 
 
 def save_url(
@@ -138,6 +167,8 @@ def save_url(
     fetcher: Callable[[str], str] = fetch_html,
     embedder: Embedder | None = None,
     replace: bool = False,
+    private: bool = False,
+    guard_private: bool = False,
 ) -> Saved:
     """FR2: check the link, download it, keep the main text, save it like any document.
 
@@ -165,6 +196,8 @@ def save_url(
         normalized_url=normalized,
         max_chunks=MAX_WEB_CHUNKS,
         replace=replace,
+        private=private,
+        guard_private=guard_private,
     )
 
 
@@ -175,6 +208,8 @@ def save_pdf(
     source_label: str | None = None,
     embedder: Embedder | None = None,
     replace: bool = False,
+    private: bool = False,
+    guard_private: bool = False,
 ) -> Saved:
     """FR3: save a text PDF page by page; every chunk keeps its PDF page number (1-based).
 
@@ -201,6 +236,8 @@ def save_pdf(
         embedder,
         pages=pages,
         replace=replace,
+        private=private,
+        guard_private=guard_private,
         original_path=original,
     )
     if saved.outcome != "unchanged":
@@ -240,12 +277,68 @@ def _save(
     is_markdown: bool,
     embedder: Embedder | None,
     *,
+    private: bool = False,
+    **options,
+) -> Saved:
+    """FR41: `private` saves the document as `laptop_only`; content already saved becomes
+    `laptop_only` too (Eo's Q4: public to private only, never back), after `_store` committed,
+    so its note is rewritten. `guard_private` (Discord, n8n) refuses a save whose identity has an
+    active private document, before anything names it (Q5). The rest is `_store`."""
+    saved = _store(
+        conn, title, label, source_type, text, is_markdown, embedder, private=private, **options
+    )
+    if private and saved.outcome == "unchanged":
+        return _make_private(conn, saved)
+    return saved
+
+
+def _make_private(conn: psycopg.Connection, saved: Saved) -> Saved:
+    try:
+        with conn.transaction():
+            changed = conn.execute(
+                "UPDATE documents SET visibility = 'laptop_only', export_pending = true"
+                " WHERE id = %s AND visibility = 'anywhere' RETURNING id",
+                (saved.document_id,),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise SaveError(
+            f"Making document {saved.document_id} private failed ({type(exc).__name__});"
+            " it was not changed."
+        ) from exc
+    if changed is None:  # it was private already
+        return saved
+    warning = _after_change(conn, [saved.document_id])
+    return dataclasses.replace(saved, made_private=True, export_warning=warning)
+
+
+def _refuse_if_private(conn: psycopg.Connection, identity_key: str) -> None:
+    """Q5: a guarded save never reaches a private document, so no reply names or counts it."""
+    found = conn.execute(
+        "SELECT 1 FROM documents WHERE space_id = %s AND identity_key = %s"
+        " AND status = 'active' AND visibility = 'laptop_only' LIMIT 1",
+        (_default_space(conn), identity_key),
+    ).fetchone()
+    if found:
+        raise SaveError(PRIVATE_MATCH)
+
+
+def _store(
+    conn: psycopg.Connection,
+    title: str,
+    label: str,
+    source_type: str,
+    text: str,
+    is_markdown: bool,
+    embedder: Embedder | None,
+    *,
     identity_key: str | None = None,
     source_url: str | None = None,
     normalized_url: str | None = None,
     max_chunks: int | None = None,
     pages: list[str] | None = None,
     replace: bool = False,
+    private: bool = False,
+    guard_private: bool = False,
     original_path: str | None = None,
 ) -> Saved:
     """FR7 and FR8: compare with the active copies, chunk and embed, then write in ONE transaction.
@@ -261,6 +354,8 @@ def _save(
     feed, each page is chunked on its own, and `page` and `page_count` are written.
     FR28: the new row and every superseded one are `export_pending` until their notes are
     written after the commit; a failed export only adds `export_warning`.
+    FR41: the new row is `laptop_only` when `private`, and also when any copy it supersedes was
+    private, so visibility only tightens (DEVIATIONS 60).
     """
     page_count = len(pages) if pages is not None else None
     if pages is not None:
@@ -271,6 +366,8 @@ def _save(
     supersede = replace or source_type == "web"
     try:
         with conn.transaction():
+            if guard_private:  # before "unchanged", which would name the private document
+                _refuse_if_private(conn, identity_key)
             same = _active_copies(conn, identity_key)
             unchanged = _unchanged(conn, same, content_hash)
     except psycopg.Error as exc:
@@ -297,10 +394,17 @@ def _save(
     try:
         with conn.transaction():
             same = _active_copies(conn, identity_key, lock=True)  # re-read under a lock
+            if guard_private:
+                _refuse_if_private(conn, identity_key)
             unchanged = _unchanged(conn, same, content_hash)
             if unchanged:
                 return unchanged
             replaced_ids = tuple(row[0] for row in same) if supersede else ()
+            if replaced_ids and not private:  # Eo: a copy replacing a private one stays private
+                (private,) = conn.execute(
+                    "SELECT bool_or(visibility = 'laptop_only') FROM documents WHERE id = ANY(%s)",
+                    (list(replaced_ids),),
+                ).fetchone()
             if replaced_ids:
                 conn.execute(
                     "UPDATE documents SET status = 'superseded', export_pending = true"
@@ -310,8 +414,8 @@ def _save(
             document_id = conn.execute(
                 "INSERT INTO documents (space_id, title, source_label, source_url,"
                 " normalized_url, source_type, identity_key, content_hash, supersedes_id,"
-                " page_count, original_path)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                " page_count, original_path, visibility)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
                 (
                     _default_space(conn),
                     title,
@@ -324,6 +428,7 @@ def _save(
                     replaced_ids[0] if replaced_ids else None,  # the newest old copy
                     page_count,
                     original_path,
+                    "laptop_only" if private else "anywhere",
                 ),
             ).fetchone()[0]
             with conn.cursor() as cur:
@@ -430,37 +535,41 @@ def _documents(ids: tuple[int, ...]) -> str:
     return "documents " + ", ".join(str(i) for i in ids)
 
 
-def list_documents(conn: psycopg.Connection, status: str = "all") -> list[Listed]:
+def list_documents(
+    conn: psycopg.Connection, status: str = "all", include_private: bool = True
+) -> list[Listed]:
     """FR18: the documents in the default space, newest first. `status` is "all" (every status,
-    superseded included), "active" or "archived" (Discord `/list`, plan "Block o part 2")."""
+    superseded included), "active" or "archived" (Discord `/list`, plan "Block o part 2").
+    `include_private` False leaves `laptop_only` documents out (FR41)."""
     if status not in LIST_STATUSES:
         raise ValueError(f"Unknown status {status!r}; use one of {', '.join(LIST_STATUSES)}.")
     with conn.transaction():
         rows = conn.execute(
             "SELECT d.id, d.title, d.saved_at, d.status, d.visibility, d.source_type"
             " FROM documents d JOIN spaces s ON s.id = d.space_id WHERE s.name = 'default'"
-            " AND (%s = 'all' OR d.status = %s)"
+            " AND (%s = 'all' OR d.status = %s) AND (d.visibility = 'anywhere' OR %s)"
             " ORDER BY d.saved_at DESC, d.id DESC",
-            (status, status),
+            (status, status, include_private),
         ).fetchall()
     return [Listed(*row) for row in rows]
 
 
-def archive(conn: psycopg.Connection, document_id: int) -> Changed:
+def archive(conn: psycopg.Connection, document_id: int, include_private: bool = True) -> Changed:
     """FR19: an active document becomes archived; its chunks stay, so unarchive brings it back
-    exactly. FR28: its note's status is rewritten after the commit."""
+    exactly. FR28: its note's status is rewritten after the commit. With `include_private` False
+    a private document is `NotFound`, checked before its status is named (FR41)."""
     with conn.transaction():
-        row = conn.execute(
-            "UPDATE documents SET status = 'archived', export_pending = true"
-            " WHERE id = %s AND status = 'active' RETURNING title",
-            (document_id,),
-        ).fetchone()
-        if row is None:
-            status = _row(conn, document_id, "status")[0]
+        (status,) = _row(conn, document_id, "status", lock=True, include_private=include_private)
+        if status != "active":
             raise LibraryError(
                 f"Document {document_id} is {status}; only active documents can be archived."
             )
-    return Changed(row[0], _after_change(conn, [document_id]))
+        (title,) = conn.execute(
+            "UPDATE documents SET status = 'archived', export_pending = true"
+            " WHERE id = %s RETURNING title",
+            (document_id,),
+        ).fetchone()
+    return Changed(title, _after_change(conn, [document_id]))
 
 
 def unarchive(conn: psycopg.Connection, document_id: int) -> Changed:
@@ -491,18 +600,24 @@ def unarchive(conn: psycopg.Connection, document_id: int) -> Changed:
     return Changed(title, _after_change(conn, [document_id]))
 
 
-def document_info(conn: psycopg.Connection, document_id: int) -> DocumentInfo:
-    """What a delete would remove (the dry run of `delete` without --yes)."""
+def document_info(
+    conn: psycopg.Connection, document_id: int, include_private: bool = True
+) -> DocumentInfo:
+    """What a delete would remove (the dry run of `delete` without --yes). With
+    `include_private` False a private document is `NotFound` (FR41)."""
     with conn.transaction():
-        return _info(conn, document_id)
+        return _info(conn, document_id, include_private)
 
 
-def delete_document(conn: psycopg.Connection, document_id: int) -> DocumentInfo:
+def delete_document(
+    conn: psycopg.Connection, document_id: int, include_private: bool = True
+) -> DocumentInfo:
     """FR20: delete one document by id; its chunks go with it (ON DELETE CASCADE) and a newer
     copy's `supersedes_id` becomes NULL (ON DELETE SET NULL). There is no undo. FR28: after the
-    commit its note and PDF copy are deleted; a file that cannot be is named in one sentence."""
+    commit its note and PDF copy are deleted; a file that cannot be is named in one sentence.
+    With `include_private` False a private document is `NotFound` and stays (FR41)."""
     with conn.transaction():
-        info = _info(conn, document_id)
+        info = _info(conn, document_id, include_private)
         conn.execute("DELETE FROM documents WHERE id = %s", (document_id,))
     if not export.enabled():
         return info
@@ -585,7 +700,8 @@ def _notes(conn: psycopg.Connection, document_ids: list[int]):
     with conn.transaction():
         rows = conn.execute(
             "SELECT id, title, source_type, source_label, source_url, saved_at, status,"
-            " page_count, original_path FROM documents WHERE id = ANY(%s) ORDER BY id",
+            " page_count, visibility, original_path FROM documents WHERE id = ANY(%s)"
+            " ORDER BY id",
             (list(document_ids),),
         ).fetchall()
         chunks = conn.execute(
@@ -593,8 +709,8 @@ def _notes(conn: psycopg.Connection, document_ids: list[int]):
             " ORDER BY document_id, position",
             (list(document_ids),),
         ).fetchall()
-    docs = [export.Doc(*row[:8]) for row in rows]
-    originals = {row[0]: row[8] for row in rows}
+    docs = [export.Doc(*row[:9]) for row in rows]
+    originals = {row[0]: row[9] for row in rows}
     parts: dict[int, list[export.Part]] = {}
     for document_id, text, heading, page in chunks:
         parts.setdefault(document_id, []).append(export.Part(text, heading, page))
@@ -608,19 +724,29 @@ def _clear_pending(conn: psycopg.Connection, document_ids: list[int]) -> None:
         )
 
 
-def _info(conn: psycopg.Connection, document_id: int) -> DocumentInfo:
-    title, source_type, saved_at = _row(conn, document_id, "title, source_type, saved_at")
+def _info(conn: psycopg.Connection, document_id: int, include_private: bool = True) -> DocumentInfo:
+    title, source_type, saved_at = _row(
+        conn, document_id, "title, source_type, saved_at", include_private=include_private
+    )
     (count,) = conn.execute(
         "SELECT count(*) FROM chunks WHERE document_id = %s", (document_id,)
     ).fetchone()
     return DocumentInfo(document_id, title, source_type, saved_at, count)
 
 
-def _row(conn: psycopg.Connection, document_id: int, columns: str, lock: bool = False) -> tuple:
-    """`columns` is always a constant from this module, never user input."""
+def _row(
+    conn: psycopg.Connection,
+    document_id: int,
+    columns: str,
+    lock: bool = False,
+    include_private: bool = True,
+) -> tuple:
+    """`columns` is always a constant from this module, never user input. A private document the
+    caller may not see gets the same sentence as a missing one (FR41, Eo's Q7)."""
     row = conn.execute(
-        f"SELECT {columns} FROM documents WHERE id = %s" + (" FOR UPDATE" if lock else ""),
-        (document_id,),
+        f"SELECT {columns} FROM documents WHERE id = %s"
+        " AND (visibility = 'anywhere' OR %s)" + (" FOR UPDATE" if lock else ""),
+        (document_id, include_private),
     ).fetchone()
     if row is None:
         raise NotFound(f"No document with id {document_id}.")

@@ -50,6 +50,7 @@ from agila.questions import ask_question
 from agila.retrieval import MIN_SIMILARITY, search
 
 MAX_ID = 2**63 - 1  # documents.id is a bigint
+PRIVATE_HELP = "keep it on the laptop: never shown in Discord, n8n or /stale"  # FR41
 
 
 def _similarity(text: str) -> float:
@@ -76,21 +77,20 @@ def _parser() -> argparse.ArgumentParser:
     text.add_argument("--title", required=True)
     text.add_argument("--label", required=True, help="source label")
     text.add_argument("--file", type=Path, help="read the text from this file, not stdin")
-    text.add_argument("--replace", action="store_true", help=replace_help)
     markdown = sub.add_parser("markdown", help="save a Markdown file")
     markdown.add_argument("path", type=Path)
     markdown.add_argument("--title")
     markdown.add_argument("--label", help="source label (default: the file name)")
-    markdown.add_argument("--replace", action="store_true", help=replace_help)
     url = sub.add_parser("url", help="save a web page (public http or https links only)")
     url.add_argument("url")
     url.add_argument("--title", help="title (default: the page title, else the link)")
-    url.add_argument("--replace", action="store_true", help=replace_help)
     pdf = sub.add_parser("pdf", help="save a text PDF page by page (not a scan)")
     pdf.add_argument("path", type=Path)
     pdf.add_argument("--title", help="title (default: the file name without .pdf)")
     pdf.add_argument("--label", help="source label (default: the file name)")
-    pdf.add_argument("--replace", action="store_true", help=replace_help)
+    for save in (text, markdown, url, pdf):
+        save.add_argument("--replace", action="store_true", help=replace_help)
+        save.add_argument("--private", action="store_true", help=PRIVATE_HELP)
     sub.add_parser("list", help="list documents with id, date, status, visibility and title")
     find = sub.add_parser("search", help="show up to 3 saved passages close to a question")
     find.add_argument("question")
@@ -195,22 +195,23 @@ def main(argv: list[str], connect: Callable[[], psycopg.Connection] = db.connect
             elif args.command in ("list", "archive", "unarchive", "delete", "search", "ask"):
                 lines = _manage(conn, args)
             else:
+                flags = {"replace": args.replace, "private": args.private}
                 if args.command == "text":
-                    saved = save_text(conn, args.title, args.label, text, replace=args.replace)
+                    saved = save_text(conn, args.title, args.label, text, **flags)
                     name = args.title
                 elif args.command == "url":
-                    saved = save_url(conn, args.url, args.title, replace=args.replace)
+                    saved = save_url(conn, args.url, args.title, **flags)
                     name = saved.title
                 elif args.command == "pdf":
-                    saved = save_pdf(conn, args.path, args.title, args.label, replace=args.replace)
+                    saved = save_pdf(conn, args.path, args.title, args.label, **flags)
                     name = saved.title
                 else:
-                    saved = save_markdown(
-                        conn, args.path, args.title, args.label, replace=args.replace
-                    )
+                    saved = save_markdown(conn, args.path, args.title, args.label, **flags)
                     name = args.title or args.path.name
-                lines = [describe(saved, name)] + _warning(saved.warning)
-                lines += _warning(saved.export_warning)
+                lines = [describe(saved, name)]
+                if saved.made_private:  # Eo's Q4: identical content saved again with --private
+                    lines.append(f"Document {saved.document_id} is now private (laptop only).")
+                lines += _warning(saved.warning) + _warning(saved.export_warning)
     except (SaveError, LibraryError) as exc:
         print(exc)
         return 1

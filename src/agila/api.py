@@ -42,7 +42,7 @@ from agila.library import (
     save_text,
     save_url,
 )
-from agila.questions import ask_question
+from agila.questions import CHANNELS, ask_question
 from agila.retrieval import MIN_SIMILARITY, search
 
 HOST = "127.0.0.1"  # FR26; the default when AGILA_HOST is unset
@@ -52,7 +52,7 @@ KEY_HEADER = "X-API-Key"
 KEY_VARIABLE = "AGILA_API_KEY"
 WRONG_KEY = "Missing or wrong API key."
 CHANNEL_HEADER = "X-Agila-Channel"  # who is asking, for query_log (DEVIATIONS 54)
-API_CHANNELS = ("web", "discord")  # `cli` is written only by the CLI itself, never over HTTP
+API_CHANNELS = ("web", "discord", "n8n")  # `cli` is written only by the CLI, never over HTTP
 
 
 class AskIn(BaseModel):
@@ -92,11 +92,17 @@ def channel(value: Annotated[str | None, Header(alias=CHANNEL_HEADER)] = None) -
     if value is None:
         return "web"
     if value not in API_CHANNELS:
-        raise HTTPException(400, f'Unknown channel "{value}"; use web or discord.')
+        raise HTTPException(400, f'Unknown channel "{value}"; use web, discord or n8n.')
     return value
 
 
 Channel = Annotated[str, Depends(channel)]
+
+
+def sees_private(channel: str) -> bool:
+    """FR41: only the laptop (`web`, i.e. `/docs`) sees `laptop_only` documents over HTTP; for
+    `discord` and `n8n` they do not exist (Eo, 12.R1 Q7)."""
+    return channel == "web"
 
 
 def _saved(saved) -> dict:
@@ -154,7 +160,12 @@ def create_app(
 
     @api.post("/ask")
     def ask(body: AskIn, conn: Conn, channel: Channel) -> dict:
-        """The checked, cited answer (FR11), or a refusal, or passages with a note."""
+        """The checked, cited answer (FR11), or a refusal, or passages with a note. `query_log`
+        has no `n8n` channel, and no workflow asks, so `n8n` is refused (DEVIATIONS 61)."""
+        if channel not in CHANNELS:
+            raise HTTPException(
+                400, f"The {channel} channel cannot ask questions; use web or discord."
+            )
         try:
             result = ask_question(conn, body.question, channel, model=model, embedder=embedder)
         except ValueError as exc:  # a blank question
@@ -162,50 +173,80 @@ def create_app(
         return asdict(result) | {"formatted": format_answer(result)}
 
     @api.get("/search")
-    def find(conn: Conn, question: str, min_similarity: float = MIN_SIMILARITY) -> dict:
+    def find(
+        conn: Conn, channel: Channel, question: str, min_similarity: float = MIN_SIMILARITY
+    ) -> dict:
         """Up to 3 passages, no model call (FR10); writes nothing (FR35). `formatted` is the same
         text the CLI's `search` prints."""
         try:
-            result = search(conn, question, min_similarity=min_similarity, embedder=embedder)
+            result = search(
+                conn,
+                question,
+                min_similarity=min_similarity,
+                embedder=embedder,
+                include_private=sees_private(channel),
+            )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
         return asdict(result) | {"formatted": format_search(result)}
 
     @api.get("/documents")
-    def documents(conn: Conn, status: Literal["active", "archived", "all"] = "all") -> list[dict]:
-        """FR18, newest first. `saved_date` is the laptop's date, so the bot formats no dates."""
-        return [
-            asdict(d) | {"saved_date": local_date(d.saved_at)} for d in list_documents(conn, status)
-        ]
+    def documents(
+        conn: Conn, channel: Channel, status: Literal["active", "archived", "all"] = "all"
+    ) -> list[dict]:
+        """FR18, newest first. `saved_date` is the laptop's date, so the bot formats no dates.
+        Private documents are left out for `discord` and `n8n` (FR41)."""
+        found = list_documents(conn, status, include_private=sees_private(channel))
+        return [asdict(d) | {"saved_date": local_date(d.saved_at)} for d in found]
 
     @api.post("/documents/{document_id}/archive")
-    def archive_document(document_id: int, conn: Conn) -> dict:
-        """FR19 for the bot's `/archive`; unarchive stays CLI-only (U85)."""
-        change = archive(conn, document_id)
+    def archive_document(document_id: int, conn: Conn, channel: Channel) -> dict:
+        """FR19 for the bot's `/archive`; unarchive stays CLI-only (U85). A private document is
+        404 for `discord` and `n8n` (FR41)."""
+        change = archive(conn, document_id, include_private=sees_private(channel))
         return asdict(change) | {"message": f'Archived document {document_id} "{change.title}".'}
 
     @api.post("/save/text")
-    def save_pasted_text(body: TextIn, conn: Conn) -> dict:
-        saved = save_text(conn, body.title, body.label, body.text, embedder, body.replace)
+    def save_pasted_text(body: TextIn, conn: Conn, channel: Channel) -> dict:
+        """A save from `discord` or `n8n` that meets a private document is refused (FR41, Q5)."""
+        saved = save_text(
+            conn,
+            body.title,
+            body.label,
+            body.text,
+            embedder,
+            body.replace,
+            guard_private=not sees_private(channel),
+        )
         return _saved(saved)
 
     @api.post("/save/url")
-    def save_link(body: UrlIn, conn: Conn) -> dict:
-        return _saved(save_url(conn, body.url, body.title, embedder=embedder, replace=body.replace))
+    def save_link(body: UrlIn, conn: Conn, channel: Channel) -> dict:
+        saved = save_url(
+            conn,
+            body.url,
+            body.title,
+            embedder=embedder,
+            replace=body.replace,
+            guard_private=not sees_private(channel),
+        )
+        return _saved(saved)
 
     @api.delete("/documents/{document_id}")
-    def delete(document_id: int, conn: Conn, confirm: bool = False) -> dict:
+    def delete(document_id: int, conn: Conn, channel: Channel, confirm: bool = False) -> dict:
         """FR20 with the CLI's `--yes` rule (Eo): without `confirm=true` nothing is deleted and
-        the reply says what would go. An unknown id is 404."""
+        the reply says what would go. An unknown id is 404, and so is a private document for
+        `discord` and `n8n` (FR41)."""
+        visible = sees_private(channel)
         if not confirm:
-            info = document_info(conn, document_id)
+            info = document_info(conn, document_id, include_private=visible)
             return asdict(info) | {
                 "deleted": False,
                 "message": f'Would delete document {info.document_id} "{info.title}"'
                 f" ({info.source_type}, {info.chunk_count} chunks). Nothing deleted."
                 " Send it again with confirm=true to delete it.",
             }
-        info = delete_document(conn, document_id)
+        info = delete_document(conn, document_id, include_private=visible)
         return asdict(info) | {
             "deleted": True,
             "message": f'Deleted document {info.document_id} "{info.title}" and its'

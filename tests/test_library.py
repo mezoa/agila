@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from pdfs import locked_pdf, text_pdf
 
-from agila import library
+from agila import export, library
 from agila.chunking import CACHE_DIR, Chunk, default_counter, embedded_text
 from agila.library import SaveError, describe, save_markdown, save_text, save_url
 from agila.pdf import read_pdf
@@ -468,6 +468,238 @@ def test_listed_documents_carry_their_source_type(conn, tmp_path):
         "A note": "text",
         "Notes": "markdown",
     }
+
+
+# --- FR41: private documents (block p) ---
+
+PRIVATE_MATCH = "A private document already uses this link or label; save it from the laptop."
+SECRET = "Secret plans"
+
+
+def _visibility(conn, document_id):
+    return conn.execute(
+        "SELECT visibility, export_pending FROM documents WHERE id = %s", (document_id,)
+    ).fetchone()
+
+
+def test_private_saves_store_laptop_only_for_text_markdown_url_and_pdf(conn, tmp_path):
+    markdown = tmp_path / "plans.md"
+    markdown.write_text("# Plans\n\nSome private Markdown text.", encoding="utf-8")
+    saves = [
+        save_text(conn, "T", "t", "Private pasted text.", FakeEmbedder(), private=True),
+        save_markdown(conn, markdown, embedder=FakeEmbedder(), private=True),
+        save_url(
+            conn,
+            "https://example.test/private",
+            fetcher=FakeFetcher(_page("article.html")),
+            embedder=FakeEmbedder(),
+            private=True,
+        ),
+        library.save_pdf(conn, _pdf(tmp_path, [PAGE_ONE]), embedder=FakeEmbedder(), private=True),
+    ]
+    assert [_visibility(conn, s.document_id)[0] for s in saves] == ["laptop_only"] * 4
+    public = save_text(conn, "P", "p", "Public pasted text.", FakeEmbedder())
+    assert _visibility(conn, public.document_id)[0] == "anywhere"  # the default
+
+
+def test_private_on_unchanged_content_makes_it_private(conn, vault):
+    first = save_text(conn, SECRET, "s", "The same words.", FakeEmbedder())
+    again = save_text(conn, SECRET, "s", "The same words.", FakeEmbedder(), private=True)
+    assert (again.outcome, again.document_id, again.made_private) == (
+        "unchanged",
+        first.document_id,
+        True,
+    )
+    assert _visibility(conn, first.document_id) == ("laptop_only", False)  # note rewritten
+    assert again.export_warning is None
+    assert _count(conn, "documents") == 1
+
+
+def test_private_on_content_that_is_private_already_reports_nothing_new(conn):
+    save_text(conn, SECRET, "s", "The same words.", FakeEmbedder(), private=True)
+    again = save_text(conn, SECRET, "s", "The same words.", FakeEmbedder(), private=True)
+    assert (again.outcome, again.made_private) == ("unchanged", False)
+
+
+def test_an_unchanged_save_without_private_never_makes_it_public(conn):
+    first = save_text(conn, SECRET, "s", "The same words.", FakeEmbedder(), private=True)
+    again = save_text(conn, SECRET, "s", "The same words.", FakeEmbedder())
+    assert (again.outcome, again.made_private) == ("unchanged", False)
+    assert _visibility(conn, first.document_id)[0] == "laptop_only"
+
+
+PRIVATE_URL = "https://example.test/private-page"
+
+
+def _text(conn, title, words, **flags):
+    return save_text(conn, title, "s", words, FakeEmbedder(), **flags)
+
+
+def _web(conn, html, title=None, **flags):
+    return save_url(conn, PRIVATE_URL, title, FakeFetcher(html), FakeEmbedder(), **flags)
+
+
+GUARDED_CASES = {  # (the private save, the guarded save that meets it)
+    "unchanged text": (
+        lambda conn: _text(conn, SECRET, "The same words.", private=True),
+        lambda conn: _text(conn, "Other title", "The same words.", guard_private=True),
+    ),
+    "changed web page": (
+        lambda conn: _web(conn, _page("article.html"), SECRET, private=True),
+        lambda conn: _web(conn, _changed_article(), guard_private=True),
+    ),
+    "same label, other text": (
+        lambda conn: _text(conn, SECRET, "The first words.", private=True),
+        lambda conn: _text(conn, "Other title", "Different words.", guard_private=True),
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(GUARDED_CASES))
+def test_a_guarded_save_matching_a_private_document_is_refused(conn, case):
+    save_private, guarded = GUARDED_CASES[case]
+    private = save_private(conn)
+    before = (_count(conn, "documents"), _count(conn, "chunks"))
+    with pytest.raises(SaveError) as caught:
+        guarded(conn)
+    assert str(caught.value) == PRIVATE_MATCH
+    assert SECRET not in str(caught.value) and str(private.document_id) not in str(caught.value)
+    assert (_count(conn, "documents"), _count(conn, "chunks")) == before
+    assert _status(conn, private.document_id)[0] == "active"
+
+
+def test_a_guarded_save_matching_only_a_public_copy_behaves_as_today(conn):
+    first = save_text(conn, "Public", "s", "The same words.", FakeEmbedder())
+    again = save_text(conn, "Public", "s", "The same words.", FakeEmbedder(), guard_private=True)
+    assert (again.outcome, again.document_id) == ("unchanged", first.document_id)
+    other = save_text(conn, "Other", "s", "Other words.", FakeEmbedder(), guard_private=True)
+    assert other.warning.startswith("Warning: a different note labelled s is already saved")
+
+
+def test_a_guarded_save_ignores_a_private_document_that_is_not_active(conn):
+    private = save_text(conn, SECRET, "s", "The same words.", FakeEmbedder(), private=True)
+    library.archive(conn, private.document_id)
+    saved = save_text(conn, "Public", "s", "The same words.", FakeEmbedder(), guard_private=True)
+    assert saved.outcome == "saved"
+    assert saved.warning is None  # the archived private note is not named either
+
+
+def test_an_unguarded_save_matching_a_private_document_behaves_as_today(conn):
+    private = save_text(conn, SECRET, "s", "The same words.", FakeEmbedder(), private=True)
+    again = save_text(conn, SECRET, "s", "The same words.", FakeEmbedder())
+    assert (again.outcome, again.document_id) == ("unchanged", private.document_id)
+
+
+def test_a_private_save_may_supersede_a_public_copy(conn):
+    public = _web(conn, _page("article.html"))
+    private = _web(conn, _changed_article(), private=True)
+    assert private.replaced_ids == (public.document_id,)  # RQ4
+    assert _status(conn, public.document_id)[0] == "superseded"
+    assert _visibility(conn, private.document_id)[0] == "laptop_only"
+
+
+def _note_text(vault, title, document_id):
+    return (vault / export.note_name(title, document_id)).read_text(encoding="utf-8")
+
+
+def test_a_private_save_writes_its_note_with_laptop_only(conn, vault):
+    private = _text(conn, SECRET, "Private words.", private=True)
+    public = _text(conn, "Public", "Public words.")
+    assert private.export_warning is None
+    assert "\nvisibility: laptop_only\n" in _note_text(vault, SECRET, private.document_id)
+    assert "visibility" not in _note_text(vault, "Public", public.document_id)
+    assert _visibility(conn, private.document_id) == ("laptop_only", False)
+
+
+def test_making_unchanged_content_private_rewrites_its_note(conn, vault):
+    first = _text(conn, SECRET, "The same words.")
+    assert "visibility" not in _note_text(vault, SECRET, first.document_id)
+    _text(conn, SECRET, "The same words.", private=True)
+    assert "\nvisibility: laptop_only\n" in _note_text(vault, SECRET, first.document_id)
+
+
+def test_a_changed_web_page_saved_over_a_private_one_stays_private(conn, vault):
+    old = _web(conn, _page("article.html"), SECRET, private=True)
+    new = _web(conn, _changed_article(), SECRET)  # no --private: a laptop save
+    assert new.replaced_ids == (old.document_id,)
+    assert _visibility(conn, new.document_id)[0] == "laptop_only"
+    assert "\nvisibility: laptop_only\n" in _note_text(vault, SECRET, new.document_id)
+
+
+def test_a_text_replace_over_a_private_note_stays_private(conn, vault):
+    old = _text(conn, SECRET, "The first words.", private=True)
+    new = _text(conn, SECRET, "The second words.", replace=True)
+    assert new.replaced_ids == (old.document_id,)
+    assert _visibility(conn, new.document_id)[0] == "laptop_only"
+    assert "\nvisibility: laptop_only\n" in _note_text(vault, SECRET, new.document_id)
+
+
+def test_a_markdown_replace_over_a_private_note_stays_private(conn, tmp_path):
+    path = tmp_path / "plans.md"
+    path.write_text("# Plans\n\nThe first version.", encoding="utf-8")
+    old = save_markdown(conn, path, embedder=FakeEmbedder(), private=True)
+    path.write_text("# Plans\n\nThe second version.", encoding="utf-8")
+    new = save_markdown(conn, path, embedder=FakeEmbedder(), replace=True)
+    assert new.replaced_ids == (old.document_id,)
+    assert _visibility(conn, new.document_id)[0] == "laptop_only"
+
+
+def test_a_pdf_replace_over_a_private_pdf_stays_private(conn, tmp_path):
+    old = library.save_pdf(conn, _pdf(tmp_path, [PAGE_ONE]), embedder=FakeEmbedder(), private=True)
+    new = library.save_pdf(
+        conn, _pdf(tmp_path, [PAGE_THREE]), embedder=FakeEmbedder(), replace=True
+    )
+    assert new.replaced_ids == (old.document_id,)
+    assert _visibility(conn, new.document_id)[0] == "laptop_only"
+
+
+def test_a_save_over_a_public_copy_stays_public(conn, vault):
+    old_page = _web(conn, _page("article.html"), "Public page")
+    new_page = _web(conn, _changed_article(), "Public page")
+    old_note = _text(conn, "Public note", "The first words.")
+    new_note = _text(conn, "Public note", "The second words.", replace=True)
+    assert new_page.replaced_ids == (old_page.document_id,)
+    assert new_note.replaced_ids == (old_note.document_id,)
+    for saved, title in ((new_page, "Public page"), (new_note, "Public note")):
+        assert _visibility(conn, saved.document_id)[0] == "anywhere"
+        assert "visibility" not in _note_text(vault, title, saved.document_id)
+
+
+def test_without_private_a_private_id_is_not_found_and_nothing_changes(conn, vault):
+    private = _text(conn, SECRET, "Private words.", private=True)
+    note = vault / export.note_name(SECRET, private.document_id)
+    before = (_count(conn, "documents"), _count(conn, "chunks"))
+    sentence = f"No document with id {private.document_id}."
+    for call in (library.document_info, library.archive, library.delete_document):
+        with pytest.raises(library.NotFound) as caught:
+            call(conn, private.document_id, include_private=False)
+        assert str(caught.value) == sentence
+    assert (_count(conn, "documents"), _count(conn, "chunks")) == before
+    assert _status(conn, private.document_id)[0] == "active"
+    assert note.exists()
+
+
+def test_without_private_an_archived_private_document_is_not_found_not_archived(conn):
+    private = _text(conn, SECRET, "Private words.", private=True)
+    library.archive(conn, private.document_id)
+    with pytest.raises(library.NotFound, match=f"No document with id {private.document_id}."):
+        library.archive(conn, private.document_id, include_private=False)
+
+
+def test_the_list_without_private_omits_private_documents(conn):
+    _text(conn, SECRET, "Private words.", private=True)
+    _text(conn, "Public", "Public words.")
+    assert [d.title for d in library.list_documents(conn, include_private=False)] == ["Public"]
+    assert [d.title for d in library.list_documents(conn, "active", False)] == ["Public"]
+    assert [d.title for d in library.list_documents(conn)] == ["Public", SECRET]  # the default
+
+
+def test_by_default_a_private_document_can_be_archived_and_deleted(conn):
+    private = _text(conn, SECRET, "Private words.", private=True)
+    assert library.document_info(conn, private.document_id).title == SECRET
+    assert library.archive(conn, private.document_id).title == SECRET
+    assert library.delete_document(conn, private.document_id).title == SECRET
+    assert _count(conn, "documents") == 0
 
 
 def test_archive_and_unarchive_round_trip(conn):

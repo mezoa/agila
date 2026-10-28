@@ -40,6 +40,7 @@ class Doc:
     saved_at: datetime
     status: str
     page_count: int | None = None
+    visibility: str = "anywhere"
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,8 @@ def render_note(doc: Doc, parts: list[Part]) -> str:
         f"source: {_quoted(doc.source_url or doc.source_label or '')}",
         f"saved: {local_date(doc.saved_at)}",
         f"status: {doc.status}",
+        # U70: private notes are exported and say so; public notes stay byte-identical (Eo's Q6)
+        *(["visibility: laptop_only"] if doc.visibility == "laptop_only" else []),
         "tags:",
         "  - agila",
         f"  - agila/{doc.source_type}",

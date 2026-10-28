@@ -18,12 +18,13 @@ from agila.embed import Embedder, embed_question
 MIN_SIMILARITY = 0.68
 
 # Cosine distance `<=>`; similarity = 1 - distance (V54). `c.id` keeps equal scores in a stable
-# order (V55). Archived and superseded documents are never searched (FR9).
+# order (V55). Archived and superseded documents are never searched (FR9); `laptop_only` ones
+# only when the caller may see them (FR41).
 TOP_CHUNKS = (
     "SELECT c.id, c.text, c.heading, c.page, d.title, d.source_url, d.source_label, d.saved_at,"
     " c.embedding <=> %s AS distance"
     " FROM chunks c JOIN documents d ON d.id = c.document_id"
-    " WHERE d.status = 'active'"
+    " WHERE d.status = 'active' AND (d.visibility = 'anywhere' OR %s)"
     " ORDER BY distance, c.id LIMIT %s"
 )
 
@@ -59,15 +60,17 @@ def search(
     limit: int = 3,
     embedder: Embedder | None = None,
     with_instruction: bool | None = None,
+    include_private: bool = True,
 ) -> SearchResult:
     """FR9: the closest chunks of active documents; FR10: no model is called.
 
-    `with_instruction` goes to `embed_question` (None = the app's setting). Raises ValueError with
-    one readable sentence for a blank question.
+    `with_instruction` goes to `embed_question` (None = the app's setting). `include_private`
+    False leaves `laptop_only` documents out entirely, also from `best_similarity` (FR41: Discord
+    and n8n). Raises ValueError with one readable sentence for a blank question.
     """
     vector = embed_question(question, with_instruction, embedder)
     with conn.transaction():  # short and read-only, so `conn` stays idle afterwards
-        rows = conn.execute(TOP_CHUNKS, (vector, limit)).fetchall()
+        rows = conn.execute(TOP_CHUNKS, (vector, include_private, limit)).fetchall()
     found = [
         Passage(chunk_id, text, heading, page, title, url or label or "", saved_at, 1.0 - distance)
         for chunk_id, text, heading, page, title, url, label, saved_at, distance in rows

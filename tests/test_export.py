@@ -138,6 +138,17 @@ def test_the_status_line_follows_the_document():
         assert f"status: {status}\n" in render_note(_doc(status=status), [Part("x")])
 
 
+def test_a_private_note_says_visibility_laptop_only():
+    note = render_note(_doc(visibility="laptop_only"), [Part("x")])
+    assert "status: active\nvisibility: laptop_only\ntags:\n" in note  # U70
+
+
+def test_a_public_note_has_no_visibility_line():
+    public = render_note(_doc(visibility="anywhere"), [Part("x")])
+    assert "visibility" not in public
+    assert public == render_note(_doc(), [Part("x")])  # byte-identical to notes before block p
+
+
 def test_a_markdown_note_writes_each_heading_once_when_it_changes():
     parts = [Part("Intro."), Part("One.", "Setup"), Part("Two.", "Setup"), Part("Three.", "Use")]
     body = render_note(_doc("markdown"), parts).split("---\n\n", 1)[1]

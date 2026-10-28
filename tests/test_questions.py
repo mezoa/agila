@@ -182,3 +182,36 @@ def test_a_blank_question_writes_nothing():
 def test_an_unknown_channel_is_refused_before_anything_runs():
     with pytest.raises(ValueError, match="Unknown channel"):
         questions.ask_question(None, "Q?", "email", model=ScriptedModel())
+
+
+@pytest.mark.db
+def test_ask_question_hides_private_documents_for_discord_only(conn):
+    (first, a), (_, b) = _library(conn)  # `a` (0.90) is the closest chunk
+    conn.execute("UPDATE documents SET visibility = 'laptop_only' WHERE id = %s", (first,))
+    conn.commit()
+    for channel in ("cli", "web"):
+        result = _ask(conn, ScriptedModel(_reply(a)), channel=channel)
+        assert result.kind == "answer"
+        assert [c.chunk_id for c in result.citations] == [a]
+    result = _ask(conn, ScriptedModel(_reply(b)), channel="discord")
+    assert [p.chunk_id for p in result.passages] == [b]
+    assert [c.chunk_id for c in result.citations] == [b]
+    assert [p.title for p in result.passages] == ["Second"]
+    assert [(channel, ids) for channel, ids, _, _ in _log(conn)] == [
+        ("cli", [a, b]),
+        ("web", [a, b]),
+        ("discord", [b]),  # one row, and it holds no private chunk
+    ]
+
+
+@pytest.mark.db
+def test_a_discord_question_whose_only_match_is_private_is_refused(conn):
+    (first, _), (second, _) = _library(conn)
+    conn.execute("UPDATE documents SET visibility = 'laptop_only'")
+    conn.commit()
+    model = ScriptedModel()
+    result = _ask(conn, model, channel="discord")
+    assert (result.kind, result.passages, model.calls) == ("refusal", (), 0)
+    assert [(channel, ids, status) for channel, ids, status, _ in _log(conn)] == [
+        ("discord", [], "refused")
+    ]

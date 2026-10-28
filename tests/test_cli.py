@@ -53,7 +53,7 @@ def test_pdf_command_passes_title_and_label_and_prints_pages(tmp_path, monkeypat
     path.write_bytes(b"%PDF-")  # never read: save_pdf is a fake here
     calls = []
 
-    def fake(conn, given, title=None, label=None, replace=False):
+    def fake(conn, given, title=None, label=None, replace=False, private=False):
         calls.append((given, title, label, replace))
         return library.Saved(7, 5, "My manual", page_count=3)
 
@@ -120,7 +120,7 @@ def test_url_command_refuses_the_cloud_metadata_address(monkeypatch, capsys):
 def test_url_command_prints_the_stored_title(monkeypatch, capsys):
     calls = []
 
-    def fake_save(conn, url, title=None, replace=False):
+    def fake_save(conn, url, title=None, replace=False, private=False):
         calls.append((url, title, replace))
         return library.Saved(1, 4, "The page title")
 
@@ -379,7 +379,9 @@ def _use(monkeypatch, model, found=None, embedder=None):
         def keep(conn, result, channel, seconds):
             rows.append((result.kind, channel))
 
-        monkeypatch.setattr(questions, "search", lambda conn, q, embedder=None: found)
+        monkeypatch.setattr(
+            questions, "search", lambda conn, q, embedder=None, include_private=True: found
+        )
         monkeypatch.setattr(questions, "record", keep)
 
     def fake_ask(conn, question, channel):
@@ -526,3 +528,124 @@ def test_delete_prints_the_file_to_delete_by_hand(monkeypatch, capsys):
     monkeypatch.setattr(cli, "delete_document", lambda conn, i: info)
     assert cli.main(["delete", "4", "--yes"], connect=_no_database) == 0
     assert capsys.readouterr().out == f'Deleted document 4 "T" and its 1 chunks.\n{warning}\n'
+
+
+# --- FR41: --private (block p) ---
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["text", "--title", "T", "--label", "L"],
+        ["markdown", "NOTE"],
+        ["url", "https://example.test/a"],
+        ["pdf", "NOTE"],
+    ],
+    ids=["text", "markdown", "url", "pdf"],
+)
+@pytest.mark.parametrize("flag", [True, False], ids=["--private", "default"])
+def test_private_flag_reaches_the_library(argv, flag, tmp_path, monkeypatch):
+    note = tmp_path / "n.md"
+    note.write_text("# Hi\nSome text.", encoding="utf-8")
+    argv = [str(note) if a == "NOTE" else a for a in argv] + (["--private"] if flag else [])
+    monkeypatch.setattr("sys.stdin", io.StringIO("Some text."))
+    calls = []
+
+    def fake(*args, private=False, **kwargs):
+        calls.append(private)
+        return library.Saved(7, 2, "T")
+
+    monkeypatch.setattr(cli, f"save_{argv[0]}", fake)
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert cli.main(argv, connect=_no_database) == 0
+    assert calls == [flag]
+
+
+def test_the_private_help_says_where_it_never_goes(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["text", "--help"])
+    assert "never shown in Discord, n8n or /stale" in " ".join(capsys.readouterr().out.split())
+
+
+def test_the_now_private_line_follows_the_unchanged_line(monkeypatch, capsys):
+    saved = library.Saved(4, 1, "T", "unchanged", made_private=True)
+    monkeypatch.setattr(cli, "save_text", lambda *a, **k: saved)
+    monkeypatch.setattr("sys.stdin", io.StringIO("Some text."))
+    argv = ["text", "--title", "T", "--label", "L", "--private"]
+    assert cli.main(argv, connect=_no_database) == 0
+    assert capsys.readouterr().out == (
+        "Already saved, unchanged: T (document 4).\nDocument 4 is now private (laptop only).\n"
+    )
+
+
+class UnitEmbedder:
+    """Fake model: every passage and every question is the same unit vector (similarity 1)."""
+
+    def passage_embed(self, texts):
+        return (UNIT.copy() for _ in texts)
+
+    def query_embed(self, query):
+        return iter([UNIT.copy()])
+
+
+def _offline_saves_and_search(monkeypatch):
+    """The real CLI and library, with the fake model in place of fastembed."""
+
+    def save(conn, title, label, text, **flags):
+        return library.save_text(conn, title, label, text, UnitEmbedder(), **flags)
+
+    def find(conn, question, **options):
+        return retrieval.search(conn, question, embedder=UnitEmbedder(), **options)
+
+    monkeypatch.setattr(cli, "save_text", save)
+    monkeypatch.setattr(cli, "search", find)
+
+
+def _run(argv, empty_db) -> str:
+    """One real CLI command on agila_test; standard input is patched by the test."""
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        assert cli.main(argv, connect=_test_database(empty_db)) == 0
+    return out.getvalue()
+
+
+SECRET_NOTE = "The blue door code is 4417. Only the laptop may know it. Nothing else is here."
+
+
+@pytest.mark.db
+def test_a_private_text_is_listed_searched_and_answered_from_the_cli(conn, empty_db, monkeypatch):
+    _offline_saves_and_search(monkeypatch)
+    monkeypatch.setattr("sys.stdin", io.StringIO(SECRET_NOTE))
+    argv = ["text", "--title", "Private check", "--label", "private-check", "--private"]
+    assert _run(argv, empty_db) == "Saved Private check: 1 chunks\n"
+    assert "laptop_only  Private check" in _run(["list"], empty_db)
+    assert "Private check" in _run(["search", "What is the blue door code?"], empty_db)
+    (chunk,) = conn.execute("SELECT id FROM chunks").fetchone()
+    conn.commit()
+    model = ScriptedModel(ANSWER.replace('"chunk_id": 11', f'"chunk_id": {chunk}'))
+    _use(monkeypatch, model, embedder=UnitEmbedder())
+    answer = _run(["ask", "What is the blue door code?"], empty_db)
+    assert "Private check" in answer and model.calls == 1
+    rows = conn.execute("SELECT channel, chunk_ids, status FROM query_log").fetchall()
+    assert rows == [("cli", [chunk], "answered")]
+
+
+@pytest.mark.db
+def test_private_on_an_unchanged_text_prints_the_now_private_line(conn, empty_db, monkeypatch):
+    _offline_saves_and_search(monkeypatch)
+    argv = ["text", "--title", "Private check", "--label", "private-check"]
+    monkeypatch.setattr("sys.stdin", io.StringIO(SECRET_NOTE))
+    assert _run(argv, empty_db) == "Saved Private check: 1 chunks\n"
+    (document,) = conn.execute("SELECT id FROM documents").fetchone()
+    conn.commit()
+    monkeypatch.setattr("sys.stdin", io.StringIO(SECRET_NOTE))
+    assert _run(argv + ["--private"], empty_db) == (
+        f"Already saved, unchanged: Private check (document {document}).\n"
+        f"Document {document} is now private (laptop only).\n"
+    )
+    assert conn.execute("SELECT visibility FROM documents").fetchone() == ("laptop_only",)
+    conn.commit()
+    monkeypatch.setattr("sys.stdin", io.StringIO(SECRET_NOTE))
+    assert _run(argv, empty_db) == (  # saving it again without --private never loosens it
+        f"Already saved, unchanged: Private check (document {document}).\n"
+    )
+    assert conn.execute("SELECT visibility FROM documents").fetchone() == ("laptop_only",)

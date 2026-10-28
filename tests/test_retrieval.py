@@ -252,3 +252,42 @@ def test_search_does_not_change_last_asked_at(conn):
 def test_an_empty_library_returns_no_passages(conn):
     result = _search(conn)
     assert (result.passages, result.best_similarity) == ([], None)
+
+
+# --- FR41: private documents (block p) ---
+
+
+def _make_private(conn, document_id):
+    conn.execute("UPDATE documents SET visibility = 'laptop_only' WHERE id = %s", (document_id,))
+
+
+@pytest.mark.db
+def test_search_without_private_skips_laptop_only_chunks(conn):
+    private = _document(conn, "Private")
+    _chunk(conn, private, 0, Q)  # the exact match, so a missing filter would return it first
+    _make_private(conn, private)
+    public = _chunk(conn, _document(conn, "Public"), 0, at(0.8))
+    result = _search(conn, min_similarity=-1.0, include_private=False)
+    assert [p.chunk_id for p in result.passages] == [public]
+    assert [p.title for p in result.passages] == ["Public"]
+    assert result.best_similarity == pytest.approx(0.8, abs=1e-6)  # no hint of the private 1.0
+
+
+@pytest.mark.db
+def test_search_by_default_still_finds_private_chunks(conn):
+    private = _document(conn, "Private")
+    exact = _chunk(conn, private, 0, Q)
+    _make_private(conn, private)
+    _chunk(conn, _document(conn, "Public"), 0, at(0.8))
+    result = _search(conn, min_similarity=-1.0)
+    assert result.passages[0].chunk_id == exact
+    assert result.best_similarity == pytest.approx(1.0, abs=1e-6)
+
+
+@pytest.mark.db
+def test_a_library_of_only_private_documents_looks_empty_without_private(conn):
+    private = _document(conn, "Private")
+    _chunk(conn, private, 0, Q)
+    _make_private(conn, private)
+    result = _search(conn, include_private=False)
+    assert (result.passages, result.best_similarity) == ([], None)

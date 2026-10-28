@@ -18,6 +18,7 @@ from agila.embed import Embedder
 from agila.retrieval import search
 
 CHANNELS = ("cli", "web", "discord")
+SEES_PRIVATE = ("cli", "web")  # FR41: Discord never sees a `laptop_only` document
 # Answer.kind -> query_log.status. `passages` and `busy` both show passages only (assumed, 7.J1).
 STATUS = {"answer": "answered", "refusal": "refused", "passages": "fallback", "busy": "fallback"}
 
@@ -36,7 +37,8 @@ def ask_question(
     if channel not in CHANNELS:
         raise ValueError(f"Unknown channel {channel!r}; use one of {', '.join(CHANNELS)}.")
     started = clock()
-    result = answer(question, search(conn, question, embedder=embedder).passages, model=model)
+    found = search(conn, question, embedder=embedder, include_private=channel in SEES_PRIVATE)
+    result = answer(question, found.passages, model=model)
     record(conn, result, channel, clock() - started)
     return result
 

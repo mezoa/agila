@@ -9,7 +9,7 @@ import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from agila import api, db, export, llm, questions
+from agila import api, db, export, library, llm, questions
 from agila.ask import format_search
 from agila.retrieval import Passage, SearchResult
 
@@ -42,7 +42,7 @@ def no_database(monkeypatch):
     """The ask flow without Postgres: one scripted passage, and log rows kept in a list."""
     rows = []
 
-    def one_passage(conn, question, embedder=None):
+    def one_passage(conn, question, embedder=None, include_private=True):
         return SearchResult([PASSAGE], 0.8, 0.7)
 
     def keep(conn, result, channel, seconds):
@@ -81,7 +81,7 @@ def test_a_missing_empty_or_wrong_key_gets_one_401_sentence(headers):
 
 
 def test_the_right_key_is_accepted_in_any_letter_case_of_the_header_name(monkeypatch):
-    monkeypatch.setattr(api, "list_documents", lambda conn, status="all": [])
+    monkeypatch.setattr(api, "list_documents", lambda conn, *args, **kwargs: [])
     client = TestClient(_app())
     assert client.get("/documents", headers=GOOD).json() == []
     assert client.get("/documents", headers={"x-api-key": KEY}).status_code == 200
@@ -121,7 +121,11 @@ def test_archive_needs_the_key():
 
 def test_documents_status_must_be_active_archived_or_all(monkeypatch):
     seen = []
-    monkeypatch.setattr(api, "list_documents", lambda conn, status: seen.append(status) or [])
+    def record(conn, status, include_private):
+        seen.append(status)
+        return []
+
+    monkeypatch.setattr(api, "list_documents", record)
     client = TestClient(_app())
     assert client.get("/documents", headers=GOOD).status_code == 200
     for status in ("active", "archived", "all"):
@@ -144,7 +148,7 @@ def test_the_key_comes_from_the_environment(monkeypatch):
     monkeypatch.setenv("AGILA_API_KEY", KEY)
     app = api.create_app(warm_up=_no_warm_up)
     app.dependency_overrides[api.connection] = lambda: None
-    monkeypatch.setattr(api, "list_documents", lambda conn, status="all": [])
+    monkeypatch.setattr(api, "list_documents", lambda conn, *args, **kwargs: [])
     assert TestClient(app).get("/documents", headers=GOOD).status_code == 200
 
 
@@ -291,7 +295,7 @@ def test_a_blank_question_is_one_400_sentence():
 def test_search_returns_passages_and_writes_no_log(monkeypatch):
     seen = {}
 
-    def fake_search(conn, question, min_similarity, embedder):
+    def fake_search(conn, question, min_similarity, embedder, include_private):
         seen["min_similarity"] = min_similarity
         return SearchResult([PASSAGE], 0.8, min_similarity)
 
@@ -306,7 +310,7 @@ def test_search_returns_passages_and_writes_no_log(monkeypatch):
 
 
 def test_search_formatted_says_nothing_close_enough(monkeypatch):
-    monkeypatch.setattr(api, "search", lambda conn, q, min_similarity, embedder: (
+    monkeypatch.setattr(api, "search", lambda conn, q, min_similarity, embedder, **kwargs: (
         SearchResult([], 0.402, min_similarity)
     ))
     body = TestClient(_app()).get("/search", params={"question": "Q?"}, headers=GOOD).json()
@@ -338,7 +342,7 @@ def test_an_unknown_channel_is_one_400_sentence_and_nothing_is_asked(no_database
     headers = GOOD | {"X-Agila-Channel": value}
     response = TestClient(_app(model)).post("/ask", json={"question": "Q?"}, headers=headers)
     assert response.status_code == 400
-    assert response.json() == {"detail": f'Unknown channel "{value}"; use web or discord.'}
+    assert response.json() == {"detail": f'Unknown channel "{value}"; use web, discord or n8n.'}
     assert (no_database, model.calls) == ([], 0)
 
 
@@ -593,3 +597,187 @@ def test_archive_rewrites_the_note_status(conn, empty_db, vault):
     body = client.post(f"/documents/{saved['document_id']}/archive", headers=GOOD).json()
     assert body["export_warning"] is None
     assert "status: archived" in note.read_text(encoding="utf-8")
+
+
+# --- FR41: private documents never reach discord or n8n (block p) ---
+
+PRIVATE_TEXT = "Private passage about the vault code. It stays on the laptop."
+PUBLIC_TEXT = "Public passage about the vault code. Anyone may read it."
+SECRET = "Secret plans"
+DISCORD = GOOD | {"X-Agila-Channel": "discord"}
+N8N = GOOD | {"X-Agila-Channel": "n8n"}
+WEB = GOOD | {"X-Agila-Channel": "web"}
+
+
+@pytest.mark.parametrize(
+    ("headers", "sees"),
+    [(GOOD, True), (WEB, True), (DISCORD, False), (N8N, False)],
+    ids=["no header", "web", "discord", "n8n"],
+)
+def test_only_web_sees_private_documents_in_the_list(monkeypatch, headers, sees):
+    seen = []
+
+    def record(conn, status, include_private):
+        seen.append(include_private)
+        return []
+
+    monkeypatch.setattr(api, "list_documents", record)
+    response = TestClient(_app()).get("/documents", headers=headers)
+    assert (response.status_code, seen) == (200, [sees])
+
+
+def test_ask_from_n8n_is_one_400_sentence_and_nothing_is_asked(no_database):
+    model = ScriptedModel(ANSWER)
+    response = TestClient(_app(model)).post("/ask", json={"question": "Q?"}, headers=N8N)
+    assert (response.status_code, response.json()) == (
+        400,
+        {"detail": "The n8n channel cannot ask questions; use web or discord."},
+    )
+    assert (no_database, model.calls) == ([], 0)
+
+
+def _private_and_public(conn):
+    """A private note saved first (lower chunk id, so it would come first without the filter),
+    then a public one; both have the same vector."""
+    private = library.save_text(
+        conn, SECRET, "secret", PRIVATE_TEXT, SameVectorEmbedder(), private=True
+    )
+    public = library.save_text(conn, "Public note", "public", PUBLIC_TEXT, SameVectorEmbedder())
+    chunk = dict(conn.execute("SELECT document_id, id FROM chunks").fetchall())
+    conn.commit()
+    return private.document_id, chunk[private.document_id], chunk[public.document_id]
+
+
+def _asking_client(empty_db):
+    app = api.create_app(
+        KEY, warm_up=_no_warm_up, model=CitesTheFirstPassage(), embedder=SameVectorEmbedder()
+    )
+
+    def test_connection():
+        with db.connect(dbname=empty_db) as c:
+            yield c
+
+    app.dependency_overrides[api.connection] = test_connection
+    return TestClient(app)
+
+
+def _never_shown(body) -> None:
+    text = json.dumps(body)
+    for leak in (SECRET, "Private passage", "secret"):
+        assert leak not in text
+
+
+@pytest.mark.db
+def test_ask_from_discord_never_cites_or_shows_a_private_document(conn, empty_db):
+    _, private_chunk, public_chunk = _private_and_public(conn)
+    client = _asking_client(empty_db)
+    web = client.post("/ask", json={"question": "Q?"}, headers=GOOD).json()
+    assert web["citations"][0]["chunk_id"] == private_chunk  # the laptop still sees it
+    body = client.post("/ask", json={"question": "Q?"}, headers=DISCORD).json()
+    assert body["kind"] == "answer"
+    assert [c["chunk_id"] for c in body["citations"]] == [public_chunk]
+    assert [p["chunk_id"] for p in body["passages"]] == [public_chunk]
+    _never_shown(body)  # answer, citations, passages and `formatted`
+    rows = conn.execute("SELECT channel, chunk_ids FROM query_log ORDER BY id").fetchall()
+    assert rows == [("web", [private_chunk, public_chunk]), ("discord", [public_chunk])]
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("headers", [DISCORD, N8N], ids=["discord", "n8n"])
+def test_search_route_hides_private_passages_from_discord(conn, empty_db, headers):
+    _, private_chunk, public_chunk = _private_and_public(conn)
+    client = _asking_client(empty_db)
+    body = client.get("/search", params={"question": "Q?"}, headers=headers).json()
+    assert [p["chunk_id"] for p in body["passages"]] == [public_chunk]
+    _never_shown(body)
+    web = client.get("/search", params={"question": "Q?"}, headers=GOOD).json()
+    assert [p["chunk_id"] for p in web["passages"]] == [private_chunk, public_chunk]
+
+
+@pytest.mark.db
+def test_documents_list_omits_private_documents_for_discord_and_n8n(conn, empty_db):
+    _private_and_public(conn)
+    client = _client(empty_db)
+    for headers in (DISCORD, N8N):
+        for status in ("active", "all"):
+            body = client.get("/documents", params={"status": status}, headers=headers).json()
+            assert [d["title"] for d in body] == ["Public note"]  # not counted either
+            _never_shown(body)
+
+
+@pytest.mark.db
+def test_documents_list_still_lists_private_documents_for_web(conn, empty_db):
+    _private_and_public(conn)
+    client = _client(empty_db)
+    for headers in (GOOD, WEB):
+        body = client.get("/documents", headers=headers).json()
+        assert [(d["title"], d["visibility"]) for d in body] == [
+            ("Public note", "anywhere"),
+            (SECRET, "laptop_only"),
+        ]
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("headers", [DISCORD, N8N], ids=["discord", "n8n"])
+def test_archive_of_a_private_document_from_discord_is_404_and_changes_nothing(
+    conn, empty_db, headers
+):
+    private, _, _ = _private_and_public(conn)
+    response = _client(empty_db).post(f"/documents/{private}/archive", headers=headers)
+    assert (response.status_code, response.json()) == (
+        404,
+        {"detail": f"No document with id {private}."},
+    )
+    assert conn.execute(
+        "SELECT status FROM documents WHERE id = %s", (private,)
+    ).fetchone() == ("active",)
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("confirm", ["false", "true"])
+@pytest.mark.parametrize("headers", [DISCORD, N8N], ids=["discord", "n8n"])
+def test_delete_of_a_private_document_from_discord_is_404_with_and_without_confirm(
+    conn, empty_db, headers, confirm
+):
+    private, _, _ = _private_and_public(conn)
+    before = _counts(conn)
+    response = _client(empty_db).delete(
+        f"/documents/{private}", params={"confirm": confirm}, headers=headers
+    )
+    assert (response.status_code, response.json()) == (
+        404,
+        {"detail": f"No document with id {private}."},
+    )
+    _never_shown(response.json())
+    assert _counts(conn) == before
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("headers", [DISCORD, N8N], ids=["discord", "n8n"])
+@pytest.mark.parametrize(
+    "text", [PRIVATE_TEXT, "Other words for the same label."], ids=["unchanged", "same label"]
+)
+def test_save_from_discord_matching_a_private_document_is_400_without_its_title(
+    conn, empty_db, headers, text
+):
+    _private_and_public(conn)
+    before = _counts(conn)
+    note = {"title": "Bot title", "label": "secret", "text": text}
+    response = _asking_client(empty_db).post("/save/text", json=note, headers=headers)
+    assert (response.status_code, response.json()) == (
+        400,
+        {
+            "detail": "A private document already uses this link or label;"
+            " save it from the laptop."
+        },
+    )
+    _never_shown(response.json())
+    assert _counts(conn) == before
+
+
+@pytest.mark.db
+def test_a_web_save_matching_a_private_document_behaves_as_on_the_laptop(conn, empty_db):
+    private, _, _ = _private_and_public(conn)
+    note = {"title": SECRET, "label": "secret", "text": PRIVATE_TEXT}
+    body = _asking_client(empty_db).post("/save/text", json=note, headers=GOOD).json()
+    assert body["message"] == f"Already saved, unchanged: {SECRET} (document {private})."
