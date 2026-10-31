@@ -8,7 +8,7 @@ import logging
 import discord
 import httpx
 import pytest
-from botfakes import EO, STRANGER, FakeInteraction, run, sent
+from botfakes import EO, N8N_ROUTE, SAVE_KEY, STRANGER, FakeInteraction, run, sent
 from discord import app_commands
 
 from agila.bot import client, commands, messages
@@ -455,3 +455,38 @@ def test_an_unexpected_error_is_logged_without_its_message(wrapped, caplog):
     asyncio.run(tree.on_error(FakeInteraction([], command="ask"), error))
     assert "command=ask error=RuntimeError at=test_bot_commands.py:" in caplog.text
     assert "leak-me" not in caplog.text
+
+
+# --- block t: /save through n8n (Workflow A); commands.py is unchanged ---
+
+
+def test_save_via_n8n_replies_with_the_sent_sentence_and_pings_nobody(caplog):
+    caplog.set_level(logging.DEBUG, logger="agila.bot")
+    routes = {N8N_ROUTE: ok({"message": "Workflow was started"})}
+    events, fake = run(commands.save_text, routes, "T", "secret saved text", save_key=SAVE_KEY)
+    assert events[0] == ("defer", {"thinking": True})
+    assert [e for e in events if e[0] in ("edit", "followup")] == [
+        (
+            "edit",
+            {
+                "content": "Sent to the save pipeline; the result is posted by n8n"
+                " in #agila-digest.",
+                "allowed_mentions": commands.NO_PINGS,
+            },
+        )
+    ]
+    assert "command=save-text result=sent-to-n8n" in caplog.text
+    for leak in ("secret saved text", SAVE_KEY, "test-key-not-a-secret", "http"):
+        assert leak not in caplog.text
+
+
+def test_every_n8n_sentence_is_at_most_25_words():
+    sentences = [
+        client.N8N_SENT,
+        client.N8N_DOWN,
+        client.N8N_NOT_PUBLISHED,
+        client.N8N_KEY_REFUSED,
+        client.N8N_TIMEOUT,
+        client.N8N_OTHER.format(code=500),
+    ]
+    assert all(len(s.split()) <= 25 for s in sentences)  # NFR7

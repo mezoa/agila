@@ -29,6 +29,8 @@ def env(monkeypatch, tmp_path):
     """Good settings and a log file in a temporary folder (never the real `logs/`)."""
     for name, value in GOOD.items():
         monkeypatch.setenv(name, value)
+    for name in ("SAVE_VIA_N8N", "AGILA_N8N_SAVE_KEY"):  # off unless a test turns it on
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(start, "LOG_FILE", tmp_path / "logs" / "bot.log")
     levels = {name: logging.getLogger(name).level for name in start.QUIET_LOGGERS}
     yield monkeypatch
@@ -141,6 +143,47 @@ def test_a_refused_token_is_one_sentence(env, capsys):
     failure = discord.LoginFailure("Improper token has been passed.")
     assert start.main([], run=Recorder(raises=failure)) == 1
     assert capsys.readouterr().out == "Discord refused the token in DISCORD_BOT_TOKEN.\n"
+
+
+# --- block t: SAVE_VIA_N8N routes saves through n8n ---
+
+SAVE_KEY = "test-save-key-not-a-secret"
+
+
+def test_save_via_n8n_needs_the_save_key(env, capsys):
+    env.setenv("SAVE_VIA_N8N", "true")
+    assert start.main([], run=_never) == 1
+    out = capsys.readouterr().out
+    assert out.startswith("Missing environment variable AGILA_N8N_SAVE_KEY.")
+    assert out.count("\n") == 1
+    assert "test-key-not-a-secret" not in out
+
+
+def test_save_via_n8n_on_builds_the_client_with_the_key_and_says_so(env, capsys):
+    env.setenv("SAVE_VIA_N8N", "true")
+    env.setenv("AGILA_N8N_SAVE_KEY", SAVE_KEY)
+    recorder = Recorder()
+    assert start.main([], run=recorder) == 0
+    assert recorder.calls[0][0].api.save_key == SAVE_KEY
+    out = capsys.readouterr().out
+    assert out == "Saves go through n8n (SAVE_VIA_N8N=true).\n"
+    assert SAVE_KEY not in out
+
+
+@pytest.mark.parametrize("value", ["TRUE", "1", "yes", ""])
+def test_save_via_n8n_is_off_unless_exactly_true(env, capsys, value):
+    env.setenv("SAVE_VIA_N8N", value)
+    env.setenv("AGILA_N8N_SAVE_KEY", SAVE_KEY)
+    recorder = Recorder()
+    assert start.main([], run=recorder) == 0
+    assert recorder.calls[0][0].api.save_key is None
+    assert "n8n" not in capsys.readouterr().out
+
+
+def test_env_example_lists_the_n8n_names_with_safe_values():
+    lines = (PROJECT / ".env.example").read_text(encoding="utf-8").splitlines()
+    assert "SAVE_VIA_N8N=false" in lines
+    assert "AGILA_N8N_SAVE_KEY=" in lines
 
 
 # --- registering the commands (--sync only) ---

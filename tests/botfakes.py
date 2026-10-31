@@ -1,6 +1,7 @@
 """Fakes for the bot tests: a Discord interaction and the Agila API, both writing to one shared
 `events` list, so a test can check the order of defer, requests and messages. No Discord, no
-network: the API is an `httpx.MockTransport`."""
+network: the API is an `httpx.MockTransport`. The fake n8n is one more route on the same
+transport, `POST /webhook/agila-save` (block t)."""
 
 import asyncio
 from types import SimpleNamespace
@@ -10,6 +11,8 @@ import httpx
 from agila.bot.client import AgilaApi
 
 KEY = "test-key-not-a-secret"
+SAVE_KEY = "test-save-key-not-a-secret"
+N8N_ROUTE = "POST /webhook/agila-save"
 EO = 111111111111111111  # a made-up Discord user ID, the only one on the test allow-list
 STRANGER = 222222222222222222
 
@@ -52,25 +55,32 @@ class FakeApi:
         self.routes = routes
         self.bodies: dict[str, bytes] = {}
         self.queries: dict[str, dict[str, str]] = {}
+        self.headers: dict[str, httpx.Headers] = {}
+        self.urls: dict[str, httpx.URL] = {}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         route = f"{request.method} {request.url.path}"
         self.events.append(("request", route))
         self.bodies[route] = request.content
         self.queries[route] = dict(request.url.params)
+        self.headers[route] = request.headers
+        self.urls[route] = request.url
         answer = self.routes[route]
         if isinstance(answer, Exception):
             raise answer
         return answer
 
 
-def run(handler, routes: dict, *args, user_id: int = EO) -> tuple[list, FakeApi]:
-    """Run one command handler against the fakes; return the events and the fake API."""
+def run(
+    handler, routes: dict, *args, user_id: int = EO, save_key: str | None = None
+) -> tuple[list, FakeApi]:
+    """Run one command handler against the fakes; return the events and the fake API. With
+    `save_key`, saves go to the fake n8n route (block t)."""
     events: list = []
     fake = FakeApi(events, routes)
 
     async def go():
-        api = AgilaApi(KEY, transport=httpx.MockTransport(fake))
+        api = AgilaApi(KEY, transport=httpx.MockTransport(fake), save_key=save_key)
         try:
             await handler(FakeInteraction(events, user_id), api, *args)
         finally:

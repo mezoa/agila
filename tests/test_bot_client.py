@@ -3,8 +3,10 @@
 import asyncio
 import json
 
+import botfakes
 import httpx
 import pytest
+from botfakes import N8N_ROUTE
 
 from agila.bot import client
 from agila.bot.client import AgilaApi, ApiError
@@ -274,3 +276,139 @@ def test_every_client_sentence_is_at_most_25_words():
         "Agila's API took longer than 120 seconds to reply." + client.SAVE_MAY_FINISH,
     ]
     assert all(len(s.split()) <= 25 for s in sentences)  # NFR7
+
+
+# --- block t: with a save key, saves go to n8n (Workflow A), everything else to the API ---
+
+N8N_OK = httpx.Response(200, json={"message": "Workflow was started"})
+
+
+def _via_n8n(routes: dict, call, save_key: str | None = botfakes.SAVE_KEY):
+    """Run one client call against the route-based fake (API and n8n on one transport); return
+    the result (or the ApiError) and the fake. A route that is not listed fails the test."""
+    fake = botfakes.FakeApi([], routes)
+
+    async def go():
+        api = AgilaApi(KEY, transport=httpx.MockTransport(fake), save_key=save_key)
+        try:
+            return await call(api)
+        except ApiError as exc:
+            return exc
+        finally:
+            await api.aclose()
+
+    return asyncio.run(go()), fake
+
+
+def _requests(fake) -> list[str]:
+    return [route for kind, route in fake.events if kind == "request"]
+
+
+def test_with_a_save_key_a_link_goes_to_n8n_not_the_api():
+    _, fake = _via_n8n(
+        {N8N_ROUTE: N8N_OK}, lambda api: api.save_link("https://example.test/a", "A title")
+    )
+    assert _requests(fake) == [N8N_ROUTE]  # one request, and none to /save/url
+    url = fake.urls[N8N_ROUTE]
+    assert (url.scheme, url.host, url.port) == ("http", "127.0.0.1", 5678)
+    assert json.loads(fake.bodies[N8N_ROUTE]) == {
+        "kind": "url",
+        "save": {"url": "https://example.test/a", "title": "A title", "replace": False},
+    }
+
+
+def test_with_a_save_key_text_goes_to_n8n_with_the_label_defaulting_to_the_title():
+    _, fake = _via_n8n({N8N_ROUTE: N8N_OK}, CALLS["save_text"])
+    assert _requests(fake) == [N8N_ROUTE]
+    assert json.loads(fake.bodies[N8N_ROUTE]) == {
+        "kind": "text",
+        "save": {"title": "Title", "label": "Title", "text": "secret saved text", "replace": False},
+    }
+
+
+def test_the_n8n_request_carries_the_save_key_and_never_the_api_key():
+    _, fake = _via_n8n({N8N_ROUTE: N8N_OK}, CALLS["save_link"])
+    headers = fake.headers[N8N_ROUTE]
+    assert headers["X-Agila-Save-Key"] == botfakes.SAVE_KEY
+    assert "X-API-Key" not in headers  # the API key never lands in n8n's run data (V172)
+    assert "X-Agila-Channel" not in headers
+    assert KEY not in str(headers.raw)
+
+
+def test_n8n_ok_returns_the_sent_sentence():
+    result, _ = _via_n8n({N8N_ROUTE: N8N_OK}, CALLS["save_text"])
+    assert result == {
+        "message": "Sent to the save pipeline; the result is posted by n8n in #agila-digest.",
+        "outcome": "sent-to-n8n",
+    }
+
+
+def test_n8n_down_is_one_sentence_and_the_api_is_not_called():
+    routes = {N8N_ROUTE: httpx.ConnectError("refused")}  # no /save/url route: no fallback
+    error, fake = _via_n8n(routes, CALLS["save_link"])
+    assert isinstance(error, ApiError)
+    assert error.sentence == (
+        "n8n is not answering at 127.0.0.1:5678; nothing was saved."
+        " Start n8n or set SAVE_VIA_N8N=false."
+    )
+    assert error.kind == "ConnectError"
+    assert _requests(fake) == [N8N_ROUTE]
+
+
+def test_n8n_404_says_the_workflow_is_not_published():
+    error, _ = _via_n8n({N8N_ROUTE: httpx.Response(404, json={})}, CALLS["save_text"])
+    assert (error.sentence, error.kind) == (
+        "The n8n save workflow is not published; nothing was saved. Publish agila-save in n8n.",
+        "HTTP 404",
+    )
+
+
+def test_n8n_403_says_the_save_key_was_refused():
+    error, _ = _via_n8n({N8N_ROUTE: httpx.Response(403, text="Forbidden")}, CALLS["save_text"])
+    assert (error.sentence, error.kind) == (
+        "n8n refused the bot's save key; nothing was saved. Check AGILA_N8N_SAVE_KEY.",
+        "HTTP 403",
+    )
+
+
+def test_n8n_timeout_says_the_save_may_still_run():
+    error, _ = _via_n8n({N8N_ROUTE: httpx.ReadTimeout("slow")}, CALLS["save_link"])
+    assert (error.sentence, error.kind) == (
+        "n8n did not confirm within 30 seconds; the save may still run."
+        " Check #agila-digest before saving again.",
+        "ReadTimeout",
+    )
+
+
+def test_n8n_other_status_names_the_code():
+    error, _ = _via_n8n({N8N_ROUTE: httpx.Response(500, text="boom")}, CALLS["save_link"])
+    assert (error.sentence, error.kind) == (
+        "n8n answered with HTTP 500; check #agila-digest before saving again.",
+        "HTTP 500",
+    )
+
+
+def test_without_a_save_key_saves_still_go_to_the_api():
+    saved = httpx.Response(200, json={"message": "Saved: 1 chunks", "outcome": "saved"})
+    routes = {"POST /save/url": saved, "POST /save/text": saved}
+    for name in ("save_link", "save_text"):
+        result, fake = _via_n8n(routes, CALLS[name], save_key=None)
+        assert result == {"message": "Saved: 1 chunks", "outcome": "saved"}
+        (route,) = _requests(fake)
+        assert fake.urls[route].port == 8000
+        assert fake.headers[route]["X-API-Key"] == KEY
+
+
+def test_with_a_save_key_ask_list_archive_and_delete_still_go_to_the_api():
+    routes = {
+        "POST /ask": httpx.Response(200, json={"kind": "refusal"}),
+        "GET /documents": httpx.Response(200, json=[]),
+        "POST /documents/7/archive": httpx.Response(200, json={"message": "Archived."}),
+        "DELETE /documents/7": httpx.Response(200, json={"deleted": False}),
+    }
+    for name in ("ask", "list_documents", "archive", "delete"):
+        _, fake = _via_n8n(routes, CALLS[name])
+        (route,) = _requests(fake)
+        assert fake.urls[route].port == 8000
+        assert fake.headers[route]["X-API-Key"] == KEY
+        assert "X-Agila-Save-Key" not in fake.headers[route]

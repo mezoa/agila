@@ -4,9 +4,10 @@
     uv run --env-file .env python -m agila.bot --sync    (once, and again when commands change)
 
 Settings come only from the environment: DISCORD_BOT_TOKEN, DISCORD_ALLOWED_USER_IDS,
-DISCORD_GUILD_ID and AGILA_API_KEY. A missing or bad one is one sentence naming the variable,
-never its value. The log goes to `logs/bot.log` at INFO (never DEBUG, where discord.py writes
-whole payloads); httpx is kept at WARNING because it logs every request URL (research V135).
+DISCORD_GUILD_ID and AGILA_API_KEY; then SAVE_VIA_N8N (on only for exactly `true`, block t) and
+AGILA_N8N_SAVE_KEY, required when it is on. A missing or bad one is one sentence naming the
+variable, never its value. The log goes to `logs/bot.log` at INFO (never DEBUG, where discord.py
+writes whole payloads); httpx is kept at WARNING because it logs every request URL (research V135).
 """
 
 import argparse
@@ -26,12 +27,15 @@ from agila.bot.messages import ALLOWED_VARIABLE, allowed_ids
 TOKEN_VARIABLE = "DISCORD_BOT_TOKEN"
 GUILD_VARIABLE = "DISCORD_GUILD_ID"
 KEY_VARIABLE = "AGILA_API_KEY"
+VIA_N8N_VARIABLE = "SAVE_VIA_N8N"
+SAVE_KEY_VARIABLE = "AGILA_N8N_SAVE_KEY"
 LOG_FILE = Path(__file__).resolve().parents[3] / "logs" / "bot.log"
 QUIET_LOGGERS = ("httpx", "httpcore")
 START = "uv run --env-file .env python -m agila.bot"
 ONLINE = "Agila bot is online. Log: logs\\bot.log. Stop with Ctrl+C."
 NOBODY = f"{ALLOWED_VARIABLE} is empty, so the bot answers nobody."
 BAD_TOKEN = f"Discord refused the token in {TOKEN_VARIABLE}."
+VIA_N8N = f"Saves go through n8n ({VIA_N8N_VARIABLE}=true)."
 
 
 class SettingsError(Exception):
@@ -104,6 +108,13 @@ def settings() -> tuple[str, frozenset[int], int, str]:
     return token, allowed, int(guild), _required(KEY_VARIABLE)
 
 
+def save_key() -> str | None:
+    """The n8n save key when SAVE_VIA_N8N is exactly `true` (then it is required), else None."""
+    if os.environ.get(VIA_N8N_VARIABLE) != "true":
+        return None
+    return _required(SAVE_KEY_VARIABLE)
+
+
 def _run(bot: AgilaBot, token: str, **kwargs) -> None:
     bot.run(token, **kwargs)
 
@@ -118,15 +129,18 @@ def main(argv: list[str] | None = None, run: Callable[..., None] = _run) -> int:
     args = parser.parse_args(argv)
     try:
         token, allowed, guild_id, key = settings()
+        n8n_key = save_key()
     except SettingsError as exc:
         print(exc)
         return 1
     if not allowed:
         print(NOBODY)
+    if n8n_key:
+        print(VIA_N8N)
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     for name in QUIET_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
-    bot = AgilaBot(AgilaApi(key), allowed, guild_id, sync=args.sync)
+    bot = AgilaBot(AgilaApi(key, save_key=n8n_key), allowed, guild_id, sync=args.sync)
     handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
     try:
         run(bot, token, log_handler=handler, log_level=logging.INFO, root_logger=True)
