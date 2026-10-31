@@ -293,3 +293,27 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Key not in the export: `$k = (Select-String -Path .env -Pattern '^AGILA_API_KEY=(.+)').Matches[0].Groups[1].Value; Select-String -Path n8n\hello.json -SimpleMatch $k; Remove-Variable k` -> nothing printed. `Select-String -Path n8n\hello.json -Pattern 'Agila API key'` -> once, the credential name only
 - No pinned data: `Select-String -Path n8n\hello.json -Pattern '"pinData": \{\s*"'` -> nothing (the file has `"pinData": {}`; the earlier pattern `\{\S` also matched that empty object, so do not use it)
 - End: **Unpublish** `agila-hello`; n8n left running for block s (`docker compose stop n8n` not run)
+
+## Day 13 (2026-10-31), block s: Workflow B, weekly digest (commands run by Eo; results as Eo reported them)
+- Discord: a text channel `agila-digest` with a webhook; the webhook URL was pasted only into n8n, never into a chat
+- Credential: **Create** -> **Credential** -> **Discord Webhook** named `Agila digest channel` -> the connection test passed
+- Workflow `agila-digest`: **Schedule Trigger** "Every Monday 09:00" (Weeks, Monday, 9am; Settings: If Execution Is Missed = Run the Most Recent Missed Execution) and **Manual Trigger**, both feeding **HTTP Request** "Get stale list" (`GET http://api:8000/stale`, `limit=10`, Header Auth `Agila API key`, header `X-Agila-Channel: n8n`, Timeout 30000, Retry On Fail with Max Tries 2 and Wait 5000, On Error = Continue (using error output)) -> **Discord** "Post digest" (the cut expression) and, on the error output, **Discord** "Post failure". Workflow timezone Asia/Manila. Published as version `v1 weekly digest`. The editor shows "sendLegacy: undefined" under the Discord nodes; harmless
+- Empty digest: `uv run --env-file .env python -m agila.cli stale` -> `Nothing stale this week`; **Execute workflow** -> Discord `Nothing stale this week`
+- Throwaway notes: `"Digest check: ..." | uv run --env-file .env python -m agila.cli text --title "Digest check" --label digest-check` -> document 35; the same with `--title "Private digest check" --label private-digest-check --private` -> document 36
+- Backdate both (only these two titles): `"update documents set saved_at = now() - interval '40 days' where title in ('Digest check', 'Private digest check') and status = 'active' returning id, title, visibility;" | docker compose exec -T db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -At'` -> the two rows, `UPDATE 2`
+- `... agila.cli stale --include-private` -> `Stale documents: 2`; `... agila.cli stale` -> only document 35
+- **Execute workflow** -> Discord `Stale documents: 1.` and one line for document 35; node output only document 35; `Private digest check` appears nowhere (FR41)
+- Clean up: `... agila.cli delete 35 --yes` and `... agila.cli delete 36 --yes`; then `... agila.cli stale --include-private` -> `Nothing stale this week`
+- API down: `docker compose stop api`, **Execute workflow** -> Discord `Weekly digest failed: Agila's API did not answer. Run the CLI stale.` after about 14 s (one retry); Executions shows the run as Succeeded (a handled error counts as success). The error item's text was not copied. Then `docker compose up -d api` -> healthy
+- Catch-up check, throwaway workflow `missed-run check` (daily **Schedule Trigger** a few minutes ahead, If Execution Is Missed = Run the Most Recent Missed Execution -> **HTTP Request** `GET http://api:8000/health`), published:
+  - First attempt INVALID: `docker compose stop n8n` was run one minute AFTER the trigger time, so the schedule had already fired and nothing was missed
+  - Second attempt: `docker compose stop n8n` before the trigger time, `docker compose --profile n8n up -d n8n` after it -> one execution at 15:31:28, succeeded. Its label showed the first published version name, so which of the two schedules fired is not certain (an edit after Publish stays a draft until published again); the catch-up itself is clear
+  - Then unpublished and deleted
+- Export (S-14): **Workflow menu** -> **Download** as `n8n\digest.json`; `git check-ignore -v n8n/digest.json` -> `.gitignore` line 34, `n8n/`
+- Key not in the export: the R-12 key search on `n8n\digest.json` -> nothing printed
+- Webhook token not in the export: with the webhook URL copied in Discord, `$t = (Get-Clipboard).Split('/')[-1]; Select-String -Path n8n\digest.json -SimpleMatch $t; Remove-Variable t; Set-Clipboard -Value ' '` -> nothing printed; the text `discord.com/api/webhooks` is not in the file either
+- `Select-String -Path n8n\digest.json -Pattern 'Agila digest channel'` -> twice (once per Discord node), the credential name only
+- No pinned data: `Select-String -Path n8n\digest.json -Pattern '"pinData": \{\s*"'` -> nothing
+- Then `docker compose stop n8n`; `api` and `db` stayed healthy
+- `agila-digest` stays published; n8n is stopped at the end of the day. Block t (Workflow A) not started: the 4-hour rule was reached at about 14:15, so it moves to Day 14
+- Monday 2026-11-02 (Day 15, Gate 3): start n8n before 09:00 with `docker compose --profile n8n up -d n8n` to see the scheduled run; if n8n starts later that day, expect one catch-up run

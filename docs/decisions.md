@@ -145,3 +145,6 @@ Dev half only (10 questions: 7 answerable, 3 unanswerable), raw top 3 from `eval
 - **Workflow A reply:** the webhook answers at once; n8n posts the result to Discord.
 - **Retry:** Max Tries 2, Wait Between Tries 5000 ms, in every HTTP Request node that saves or reads.
 - **Also confirmed:** `n8n/` stays ignored by git (screenshots revisited at block u); the Day 2 `n8n` container stays stopped and is removed after block s passes, on Eo's word; `@everyone` in a title is accepted without a test (U96); Eo starts n8n before 09:00 on Monday 2026-11-02 (Day 15) so Gate 3 can show a scheduled run.
+- **Block t moves to Day 14 (Eo, 2026-10-31):** the 4-hour rule was reached at about 14:15 on Day 13, so Workflow A (block t) was not started.
+- **The catch-up works (block s, U94):** after a restart, n8n 2.45.5 ran one missed Schedule Trigger execution ("Run the Most Recent Missed Execution"); seen over minutes, not yet over a laptop-off of hours.
+- **Digest posting:** Workflow B posts with the **Discord node in webhook mode** (credential `Agila digest channel`), so the webhook URL lives only in the credential, not in a node field. The editor shows the label "sendLegacy: undefined" under the Discord nodes; harmless.
