@@ -1,6 +1,6 @@
 # Plan: Project Agila (Days 1 to 15, Oct 15 to Nov 2)
 
-- Version: v15 (2026-10-28: "Block o part 2, p, q, r plan" added, draft, from Eo's 12.R1 answers). Backup: `plan_prev.md` (v14, the version just before this edit). Earlier: v14 (2026-10-27: block o part 1 verified, step 8 recorded). Backup: `plan_prev.md` (the version just before this edit). Earlier: v13 (2026-10-26: Day 15 moves to Nov 2, DEVIATIONS 46). Earlier: v12 (2026-10-26: Gate 1 ticked, tag `v0.1-core`). Earlier: v11 (2026-10-26: block l done and recorded; Gate 1 not ticked). Earlier: v10 (2026-10-26: block l plan added, draft, from Eo's 9.L1 answers). Earlier: v9 (2026-10-24: block k plan added, draft). Earlier: v8 (2026-10-24: Gate 1 back to Day 9, Day 10 slack). Earlier: v7 (2026-10-23: block j plan added from Eo's 7.J1 answers). Earlier: v6 (2026-10-22: block i plan added). Earlier: v5 (2026-10-22: block h plan added). Earlier: v4 (2026-10-22: block g plan added). Earlier: v3 (2026-10-21: block f part 2 plan added, draft; earlier v2 of 2026-10-15 after the Day 1 external review, decisions in PRD Appendix D). Backup: `plan_prev.md` (v7).
+- Version: v16 (2026-10-31: "Block r, s, t plan" added, draft, from Eo's 13.R1 answers; the old block r R2 image string changed to 2.45.5). Backup: `plan_prev.md` (v15, the version just before this edit). Earlier: v15 (2026-10-28: "Block o part 2, p, q, r plan" added, draft, from Eo's 12.R1 answers). Backup: `plan_prev.md` (v14, the version just before this edit). Earlier: v14 (2026-10-27: block o part 1 verified, step 8 recorded). Backup: `plan_prev.md` (the version just before this edit). Earlier: v13 (2026-10-26: Day 15 moves to Nov 2, DEVIATIONS 46). Earlier: v12 (2026-10-26: Gate 1 ticked, tag `v0.1-core`). Earlier: v11 (2026-10-26: block l done and recorded; Gate 1 not ticked). Earlier: v10 (2026-10-26: block l plan added, draft, from Eo's 9.L1 answers). Earlier: v9 (2026-10-24: block k plan added, draft). Earlier: v8 (2026-10-24: Gate 1 back to Day 9, Day 10 slack). Earlier: v7 (2026-10-23: block j plan added from Eo's 7.J1 answers). Earlier: v6 (2026-10-22: block i plan added). Earlier: v5 (2026-10-22: block h plan added). Earlier: v4 (2026-10-22: block g plan added). Earlier: v3 (2026-10-21: block f part 2 plan added, draft; earlier v2 of 2026-10-15 after the Day 1 external review, decisions in PRD Appendix D). Backup: `plan_prev.md` (v7).
 - Read first: `PROTOCOL.md`, `research_latest.md`. PRD: `docs/PRD.md` (Draft 3.3). Hours: PRD section 5 (planned 57.0 of 63 h; slack 6.0 h includes the gate checks).
 - Stop rule: any failed verification stops work. Mark the step `[x] Failed (cause)`, add a line to the Lessons log in research, return to Research.
 - Session rule: one block per coding session where possible; fresh session after each gate.
@@ -934,9 +934,10 @@ Test files: `test_retrieval.py`, `test_questions.py`, `test_library.py`, `test_a
 23. **Q5 Status log**; Eo commits on Eo's word. FR39 verified by Q1 and Q2 (backdated test rows, never Eo's real data).
 
 ### Block r: n8n spike (stretch; may move to Day 13; PRD 1.0 h)
-**Shape.** A profiled `n8n` service in `compose.yaml` exactly as research 2s D1, with `N8N_DIAGNOSTICS_ENABLED: "false"` (Q10) and a fresh volume `n8n_data` (Compose names it `agila_n8n_data`; the Day 2 `n8n_data` volume and `n8n` container stay untouched, Q11). The workflow `agila-hello`: Webhook (GET, path `agila-hello`, Respond: When Last Node Finishes) → HTTP Request `GET http://api:8000/health` → HTTP Request `GET http://api:8000/stale` (credential `Agila API key`, Header Auth, Name `X-API-Key`; plain header `X-Agila-Channel: n8n`). If block q has not run yet, the third node calls `GET http://api:8000/documents` instead.
+**SUPERSEDED 2026-10-31 by "Block r, s, t plan" below** (Eo's 13.R1 answer 1: n8n 2.45.5 by digest). The steps R1 to R5 there replace R1 to R5 here; only R2's image string is changed in place.
+**Shape.** A profiled `n8n` service in `compose.yaml` as research 2s D1 (image changed to 2.45.5, research 2t answer 1), with `N8N_DIAGNOSTICS_ENABLED: "false"` (Q10) and a fresh volume `n8n_data` (Compose names it `agila_n8n_data`; the Day 2 `n8n_data` volume and `n8n` container stay untouched, Q11). The workflow `agila-hello`: Webhook (GET, path `agila-hello`, Respond: When Last Node Finishes) → HTTP Request `GET http://api:8000/health` → HTTP Request `GET http://api:8000/stale` (credential `Agila API key`, Header Auth, Name `X-API-Key`; plain header `X-Agila-Channel: n8n`). If block q has not run yet, the third node calls `GET http://api:8000/documents` instead.
 24. **R1 Records.** `DEVIATIONS.md` row 62 "n8n calls `http://api:8000`, not `host.docker.internal`" (PRD section 13 block r line; Refinement, Q12); `decisions.md` n8n lines; `.gitignore` `n8n/` (RQ2). Verification: Eo reads the diff.
-25. **R2 Compose service.** Files: `compose.yaml`; new plain `tests/test_compose.py` (reads the file as text, no YAML package): the n8n image line carries `2.43.6@sha256:dd580fe1...2833`; its port line is exactly `"127.0.0.1:5678:5678"`; `profiles: ["n8n"]`; `TZ` and `GENERIC_TIMEZONE` are `Asia/Manila`; `N8N_DIAGNOSTICS_ENABLED` is `"false"`; the n8n block names no `AGILA_API_KEY`, `POSTGRES_` or `DISCORD_` variable; the `api` port line is still `"127.0.0.1:8000:8000"`. Verification: ruff, `pytest`; Eo's command R-1 validates the file.
+25. **R2 Compose service.** Files: `compose.yaml`; new plain `tests/test_compose.py` (reads the file as text, no YAML package): the n8n image line carries `2.45.5@sha256:9f6d0a5987ab5a297c4b0b38fbf1a22285dd1364551478e93f03d506908fa74c` (was `2.43.6@sha256:dd580fe1...2833`; changed 2026-10-31, Eo's 13.R1 answer 1); its port line is exactly `"127.0.0.1:5678:5678"`; `profiles: ["n8n"]`; `TZ` and `GENERIC_TIMEZONE` are `Asia/Manila`; `N8N_DIAGNOSTICS_ENABLED` is `"false"`; the n8n block names no `AGILA_API_KEY`, `POSTGRES_` or `DISCORD_` variable; the `api` port line is still `"127.0.0.1:8000:8000"`. Verification: ruff, `pytest`; Eo's command R-1 validates the file.
 26. **R3 Eo: start, owner, credential, workflow, green runs** (commands R-1 to R-10).
 27. **R4 Export and checks** (commands R-11 to R-13): `n8n/hello.json` on disk (ignored by git), key not in it (U90), memory noted (U92), URL paths and test-listen behaviour noted (U93), n8n stopped.
 28. **R5 Records and status log.** setup-log "Day 12/13, block r" with the commands as run; research U90, U92, U93 results; status log; Eo commits on Eo's word.
@@ -975,7 +976,7 @@ Test files: `test_retrieval.py`, `test_questions.py`, `test_library.py`, `test_a
 - R-3 `docker compose exec n8n date` → a time with `PST` (Asia/Manila).
 - R-4 Credentials → new **Header Auth** named `Agila API key`: Name `X-API-Key`, Value = the API key pasted from `.env` by Eo (never into a chat). Save.
 - R-5 New workflow `agila-hello` built as in the shape above. On the Webhook node, note the Test URL and Production URL as shown (U93).
-- R-6 Click "Listen for test event", then `curl.exe -s "<Test URL>"` → the `/stale` (or `/documents`) JSON; in the editor all three nodes are green; the `/health` node output is `{"database":"ok","ollama":"ok"}`.
+- R-6 Click **Execute workflow** on the canvas (corrected 2026-10-31: "Listen for test event" runs only the Webhook node), then `curl.exe -s "<Test URL>"` → the `/stale` (or `/documents`) JSON; in the editor all three nodes are green; the `/health` node output is `{"database":"ok","ollama":"ok"}`.
 - R-7 While R-6 runs: `docker stats agila-n8n-1 --no-stream` → note MEM (U92).
 - R-8 Negative check: `docker compose stop api`, run R-6 again → the `/health` node is red; `docker compose up -d api` → healthy again.
 - R-9 Publish the workflow; `curl.exe -s "<Production URL>"` → the same JSON; the Executions tab shows the run green.
@@ -1020,6 +1021,185 @@ Core: about 4.5 h with Eo's checks, about one Day 12. Stretch: about 2.5 h, like
 - **RQ2 (n8n exports in git):** the repository has a GitHub remote, and D9 says exports are never published. **Recommended:** add `n8n/` to `.gitignore` in R1, so `n8n/hello.json` stays only on the laptop (FR32 asks for the files in the project folder, not in git).
 - **RQ3 (`GET /documents` default):** **Recommended:** keep the API's default `status=all` (so `/docs` and the CLI-matching tests are unchanged); only the bot sends `active` by default.
 - **RQ4 (a private save superseding a public copy):** `url --private` on a page whose public copy is active supersedes that copy, as any changed page does today. **Recommended:** accept: the old copy is superseded and never shown again, and the new one is private.
+
+## Block r, s, t plan (Day 13; r and s first; t part 1 only if under 4 hours of work) - APPROVED 2026-10-31 (Eo; TQ1 block q done, TQ2 keep `depends_on` with `service_healthy`, TQ3 `n8n/` stays ignored and screenshots are revisited at block u, TQ4 the Day 2 `n8n` container stays stopped and is removed after block s passes on Eo's word, TQ5 `@everyone` accepted without a test, TQ6 Eo starts n8n before 09:00 on Mon 2026-11-02)
+Written 2026-10-31 from Eo's 13.R1 answers. Research: section 2t (V155 to V166, U94 to U103), U12, U89, U90, U92, U93; earlier V145 to V150 and answer D1 to D5 of 2s. PRD Draft 3.3: block r line (section 11), FR29, FR30, FR32, FR39, FR41, FR23, NFR3, NFR8, NFR9, NFR10, NFR11, D9, drop order (Workflow A first).
+**Eo's answers (13.R1, 2026-10-31):** 1 pin `n8nio/n8n:2.45.5@sha256:9f6d0a5987ab5a297c4b0b38fbf1a22285dd1364551478e93f03d506908fa74c` (R2 above changed). 2 Schedule Trigger: "Run the Most Recent Missed Execution". 3 `GET /stale?limit=10` plus the cut expression. 4 a failed digest posts a failure sentence to Discord. 5 one Discord Webhook credential for the `agila-digest` channel, shared by Workflows B and A. 6 Workflow A's webhook protection is decided at block t; no fourth secret now. 7 Workflow A replies at once; n8n posts the result. 8 Wait Between Tries 5000 ms.
+**Order and the 4-hour rule:** r, then s, then t. Start block t only if the day's work on r and s took under 4 hours; otherwise t moves (Workflow A is first in the PRD drop order) and Gate 3 needs only Workflow B.
+**Hard rules:** no Python code changes in any of the three blocks (only `compose.yaml`, `.gitignore` and the new test file in r); the workflows use only the Webhook, Schedule Trigger, Manual Trigger, HTTP Request and Discord nodes: no Code node (V165), no AI node, no search or answer logic (NFR10); every HTTP Request node uses the Header Auth credential `Agila API key` and the plain header `X-Agila-Channel: n8n`, and no key, token or webhook URL is typed into a node field (research 2t answer 5); never pin data; Claude runs no docker command, opens no n8n editor, makes no Discord call, never reads `.env`, and commits nothing; Eo types every secret into the n8n editor, never into a chat. The throwaway notes are saved and deleted by Eo with the CLI; Eo's real documents are only looked at, never backdated or changed.
+**Not built here:** the bot's `SAVE_VIA_N8N` routing and Workflow A's webhook protection (block t part 2, Q6 at block t); screenshots and `docs/demo-script.md` (block u); Workflow C; any change to the API, `/stale` or its sentences.
+
+### Block r: n8n service and a hello workflow (PRD 1.0 h)
+**Shape.** Service `n8n` in `compose.yaml`:
+```yaml
+  n8n:
+    image: n8nio/n8n:2.45.5@sha256:9f6d0a5987ab5a297c4b0b38fbf1a22285dd1364551478e93f03d506908fa74c
+    profiles: ["n8n"]  # not started by a plain `docker compose up -d` (V148)
+    environment:
+      TZ: Asia/Manila  # the container clock
+      GENERIC_TIMEZONE: Asia/Manila  # schedule nodes (V147)
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"  # telemetry off (Q10, 12.R1)
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "127.0.0.1:5678:5678"
+    depends_on:
+      api:
+        condition: service_healthy  # a catch-up run never fires before the API answers (2t answer 2)
+    restart: "no"
+```
+plus `n8n_data:` under `volumes:` (Compose names it `agila_n8n_data`; the Day 2 `n8n_data` volume and `n8n` container stay untouched, Q11). No `${...}` in the block: n8n gets no value from `.env`. No scheduler variable: 2.45.5's defaults run missed executions (V158). Workflow `agila-hello`: **Webhook** (GET, path `agila-hello`, Respond **When Last Node Finishes**) → **HTTP Request** "Health" `GET http://api:8000/health` (Authentication None, Options → Timeout `30000`) → **HTTP Request** "Stale" `GET http://api:8000/stale`, query `limit` = `10`, Authentication **Generic Credential Type** → **Header Auth** → `Agila API key`, Send Headers `X-Agila-Channel` = `n8n`, Timeout `30000`.
+
+**Steps (Claude):**
+1. **R1 Records and one doc read.** `DEVIATIONS.md` row 62 "n8n calls `http://api:8000`, not `host.docker.internal`" (PRD section 11 block r line; Refinement; 12.R1 Q12); `decisions.md` new section "Day 13: n8n workflows (Eo, 2026-10-31; research 2t)" with the eight 13.R1 answers; replace the Day 12 line "n8nio/n8n:2.43.6 pinned by digest (2.45.x decided at block s)" by a pointer to it; `.gitignore` gains `n8n/` (RQ2). Read the Docker Compose page on `depends_on` and `condition: service_healthy` (https://docs.docker.com/compose/how-tos/startup-order/) and record the fact as V167, closing U103 (our `api` already waits for `db` this way). If the page does not support it, stop and ask (the line would come out of the shape). Verification: Eo reads the diff.
+2. **R2 Tests first, then the service.** New plain `tests/test_compose.py`: reads `compose.yaml` and `.gitignore` as text (no YAML package); a helper `_service(name)` returns the lines from `  <name>:` to the next line that starts with two spaces and a letter, or with a letter, and fails with the service name when it is missing. Tests (12):
+   - `test_n8n_image_is_2_45_5_pinned_by_digest` (the exact image line above);
+   - `test_n8n_is_published_only_on_127_0_0_1_5678` (one port line, exactly `- "127.0.0.1:5678:5678"`);
+   - `test_n8n_starts_only_with_its_profile` (`profiles: ["n8n"]`);
+   - `test_n8n_clock_and_schedules_use_asia_manila` (`TZ` and `GENERIC_TIMEZONE`);
+   - `test_n8n_telemetry_is_off` (`N8N_DIAGNOSTICS_ENABLED: "false"`);
+   - `test_n8n_takes_nothing_from_env` (no `${` in the block; no `AGILA_`, `POSTGRES_`, `DISCORD_`);
+   - `test_n8n_keeps_the_default_scheduler` (no `N8N_SCHEDULER_ENABLED`, no `N8N_USE_WORKFLOW_PUBLICATION_SERVICE`, V158);
+   - `test_n8n_data_has_its_own_volume` (`- n8n_data:/home/node/.n8n` in the block and `  n8n_data:` under the top-level `volumes:`);
+   - `test_n8n_waits_for_a_healthy_api` (`api:` then `condition: service_healthy` under `depends_on:`);
+   - `test_n8n_never_restarts_by_itself` (`restart: "no"`);
+   - `test_api_and_db_are_still_published_only_on_127_0_0_1` (`"127.0.0.1:8000:8000"`, `"127.0.0.1:5433:5432"`; the API rule in CLAUDE.md);
+   - `test_n8n_exports_are_ignored_by_git` (a `.gitignore` line exactly `n8n/`).
+   Run them: the n8n tests fail (no service yet) and the `.gitignore` test passes after R1. Then add the service. Verification: `uv run ruff check .` clean, `uv run pytest` 874 passed (862 + 12), `uv run --env-file .env pytest -m db` 190 passed; `ruff format` only on the new test file.
+3. **R3, R4 Eo** (commands R-1 to R-13).
+4. **R5 Records.** `docs/setup-log.md` "Day 13 (block r)" with the commands as run and their output (no secret); research: U90 (key check), U92 (memory during a run), U93 (URLs, how long the test listener stayed open), U100 (idle memory on 2.45.5, any blocked node); status log. Eo commits.
+
+**Commands Eo runs (R3, R4).** Before: `Get-ChildItem Env: | Where-Object Name -match 'AGILA|POSTGRES|DISCORD|N8N' | Select-Object Name` → nothing.
+- R-1 `docker compose config --quiet` → nothing printed. `docker compose up -d` → `api` healthy (`docker compose ps`). `docker compose --profile n8n up -d n8n` → pulls 2.45.5, `agila-n8n-1` started; `docker compose ps` → `n8n` up, `api` and `db` healthy; `docker compose port n8n 5678` → `127.0.0.1:5678`.
+- R-2 `docker compose logs n8n | Select-String 'Version'` → `Version: 2.45.5`. `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:5678/` → `200`. Open `http://127.0.0.1:5678` → the owner set-up page (fresh volume); create the owner (new password, kept out of chats).
+- R-3 `docker compose exec n8n date` → a time with `PST`. After 60 s idle: `docker stats agila-n8n-1 --no-stream` → note MEM (U100; Day 2 and 7 on 2.43.6: 369 to 444 MiB).
+- R-4 **Create** → **Credential** → **Header Auth**, named `Agila API key`: Name `X-API-Key`, Value = the key pasted from `.env` by Eo. Save.
+- R-5 New workflow `agila-hello` as in the shape. On the Webhook node note the Test URL and Production URL exactly as shown (U93; expected `http://localhost:5678/webhook-test/agila-hello` and `.../webhook/agila-hello`). In every command below use `127.0.0.1` in place of `localhost`.
+- R-6 Click **Execute workflow** on the canvas (not **Listen for test event** inside the Webhook node, which runs only that node; Lessons 2026-10-31), then `curl.exe -s "http://127.0.0.1:5678/webhook-test/agila-hello"` → the `/stale` JSON (`documents`, `total`, `formatted`); in the editor all three nodes are green; the Health node's output is `{"database":"ok","ollama":"ok"}` (`"ollama"` may name a problem if Ollama is stopped; the run still goes on only if `/health` is 200, so start Ollama first). Note how long the listener stays open if you wait (U93).
+- R-7 During a second R-6 run: `docker stats agila-n8n-1 --no-stream` → MEM (U92).
+- R-8 Negative check: `docker compose stop api`, run R-6 again → the Health node is red with a connection error (copy its first line for U95; it holds no secret). `docker compose up -d api` → healthy again.
+- R-9 **Publish** (Shift+P). `curl.exe -s "http://127.0.0.1:5678/webhook/agila-hello"` → the same JSON; the **Executions** tab shows the run as succeeded.
+- R-10 `uv run --env-file .env python -m agila.cli list` → if any `laptop_only` row exists, its title is not in the R-9 JSON (FR41). If none exists, this check is done in block s.
+- R-11 **Workflow menu** → **Download**, saved as `n8n\hello.json`. `git check-ignore -v n8n/hello.json` → a line naming `.gitignore` and `n8n/`.
+- R-12 Key not in the export (U90): `$k = (Select-String -Path .env -Pattern '^AGILA_API_KEY=(.+)').Matches[0].Groups[1].Value; Select-String -Path n8n\hello.json -SimpleMatch $k; Remove-Variable k` → nothing printed. `Select-String -Path n8n\hello.json -Pattern 'Agila API key'` → the credential name only. `Select-String -Path n8n\hello.json -Pattern '"pinData": \{\s*"'` → nothing (no pinned data, U97; the empty `"pinData": {}` does not match).
+- R-13 **Unpublish** `agila-hello` (Ctrl+U). `docker compose stop n8n` → stopped; `docker compose ps` → `api` and `db` still up (never `--profile n8n down`, V148).
+
+### Block s: Workflow B, weekly digest (PRD 2.5 h)
+**Shape.** Workflow `agila-digest` (research 2t answer 2 with Eo's answers):
+
+| # | Node (name in the editor) | Settings |
+| --- | --- | --- |
+| 1 | **Schedule Trigger** "Every Monday 09:00" | Trigger Interval Weeks; Weeks Between Triggers 1; Trigger on Weekdays Monday; Trigger at Hour 9am; Trigger at Minute 0. Settings tab: If Execution Is Missed → **Run the Most Recent Missed Execution** |
+| 2 | **Manual Trigger** ("When clicking ‘Execute workflow’") | for demos |
+| 3 | **HTTP Request** "Get stale list" (1 and 2 both connect to it) | GET `http://api:8000/stale`; query `limit` = `10`; Header Auth `Agila API key`; header `X-Agila-Channel` = `n8n`; Timeout `30000`. Settings: Retry On Fail on, Max Tries **2**, Wait Between Tries **5000**; On Error **Continue (using error output)** |
+| 4 | **Discord** "Post digest" (success output) | Connection Type **Webhook**; credential **Discord Webhook** `Agila digest channel`; Message: `{{ $json.formatted.length <= 2000 ? $json.formatted : $json.formatted.slice(0, $json.formatted.lastIndexOf('\n', 1950)) + '\nCut to fit Discord. Run the CLI stale for all.' }}` |
+| 5 | **Discord** "Post failure" (error output) | same credential; Message `Weekly digest failed: Agila's API did not answer. Run the CLI stale.` |
+
+Workflow menu → Settings → Timezone **Asia/Manila**; then Publish. `formatted` already says `Nothing stale this week` when the list is empty (V166), so no If node.
+
+**Steps (Claude):**
+1. **S1 Records.** `DEVIATIONS.md` row 63 "The digest shows at most 10 documents, and a text over 2,000 characters is cut at a line break with one sentence" (FR30, FR39's limit [assumed]; Refinement) and row 64 "A failed digest posts `Weekly digest failed: Agila's API did not answer. Run the CLI stale.`" (FR30 is silent; Gap filled). Verification: Eo reads the diff.
+2. **S2 to S6 Eo** (commands S-1 to S-14).
+3. **S7 Records.** setup-log "Day 13 (block s)"; research U12 (seen in the editor), U94, U95, U99, U101, U97; status log. Eo commits.
+
+**Commands Eo runs.** Start: R-1 again (n8n up), Ollama does not matter for `/stale`.
+- **Discord and credential**
+  - S-1 In Discord: create a text channel `agila-digest` in the solo server; channel settings → **Integrations** → **Webhooks** → **New Webhook** → channel `agila-digest` → **Copy Webhook URL** (never into a chat).
+  - S-2 n8n: **Create** → **Credential** → **Discord Webhook**, named `Agila digest channel`, Webhook URL pasted. Save → the credential test passes (V159: it calls the URL).
+- **Build**
+  - S-3 New workflow `agila-digest` as in the shape; Settings → Timezone Asia/Manila. Both triggers connect to node 3 (U101: if the editor refuses, stop and tell Claude).
+- **Empty digest first (real data only looked at)**
+  - S-4 `uv run --env-file .env python -m agila.cli stale` → expected `Nothing stale this week` (the oldest save is from Oct 21, so nothing is stale before about Nov 20). If it lists documents, skip S-5 and say so (the empty case is then proven only by `test_stale_route_with_nothing_stale_says_so`).
+  - S-5 **Execute workflow** → in the Discord channel `#agila-digest`: `Nothing stale this week`. Nodes 2, 3, 4 green.
+- **A real digest from two throwaway notes**
+  - S-6 Save them:
+    `"Digest check: this note exists only to test the weekly digest. It will be deleted today. Nothing else is here." | uv run --env-file .env python -m agila.cli text --title "Digest check" --label digest-check` → `Saved Digest check: 1 chunks`
+    `"Private digest check: this private note must never reach Discord. It will be deleted today. Nothing else is here." | uv run --env-file .env python -m agila.cli text --title "Private digest check" --label private-digest-check --private` → `Saved Private digest check: 1 chunks`
+  - S-7 Backdate both by one SQL line (the SQL is piped in, setup-log Day 9; it touches only these two titles):
+    `"update documents set saved_at = now() - interval '40 days' where title in ('Digest check', 'Private digest check') and status = 'active' returning id, title, visibility;" | docker compose exec -T db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -At'` → two lines `<id>|Digest check|anywhere` and `<id>|Private digest check|laptop_only` (psql may add a line `UPDATE 2`). Note both ids.
+  - S-8 The private one really is stale (so its absence later is the filter, not the date): `uv run --env-file .env python -m agila.cli stale --include-private` → `Stale documents: 2.` with both lines, `(never asked)`; without `--include-private` → `Stale documents: 1.` and only `Digest check`.
+  - S-9 **Execute workflow** → in the Discord channel `#agila-digest`: `Stale documents: 1.` and one line `<id>  <date 40 days ago>  text  Digest check  (never asked)`. **Private check (FR41):** the Discord message and node 3's output (`documents`, `total` = 1, `formatted`) contain no `Private digest check`.
+- **Failure path**
+  - S-10 `docker compose stop api`; **Execute workflow** → after about 5 s (one retry) in the Discord channel `#agila-digest`: `Weekly digest failed: Agila's API did not answer. Run the CLI stale.` Note: node 3's error item (first lines, for U95) and whether the run shows as succeeded or failed (U99). `docker compose up -d api` → healthy.
+- **Clean up the throwaway notes**
+  - S-11 `uv run --env-file .env python -m agila.cli delete <Digest check id> --yes` and the same for `<Private digest check id>` → `Deleted document <id> "Digest check" and its 1 chunks.` and the same for the private one. `uv run --env-file .env python -m agila.cli stale --include-private` → `Nothing stale this week` (or the S-4 result). Their notes in `raw\agila` are gone.
+- **Schedule and missed run**
+  - S-12 **Publish** `agila-digest`. Open node 1 → the Settings tab shows If Execution Is Missed = Run the Most Recent Missed Execution (U12 seen).
+  - S-13 Missed-run check (U94, about 10 minutes): new workflow `missed-run check` = **Schedule Trigger** (Trigger Interval Days, hour and minute = now + 3 minutes, If Execution Is Missed = Run the Most Recent Missed Execution) → **HTTP Request** `GET http://api:8000/health` (no key; harmless); Publish. `docker compose stop n8n` before that minute; wait until 3 minutes after it (past the 60 s grace); `docker compose --profile n8n up -d n8n`; within 2 minutes the Executions list of `missed-run check` shows one run. Then delete that workflow. Nothing is posted anywhere.
+- **Export**
+  - S-14 Download `agila-digest` as `n8n\digest.json`. Key check as R-12 on `n8n\digest.json` → nothing. Webhook token: copy the webhook URL again in Discord, then `$t = (Get-Clipboard).Split('/')[-1]; Select-String -Path n8n\digest.json -SimpleMatch $t; Remove-Variable t; Set-Clipboard -Value ' '` → nothing printed. `Select-String -Path n8n\digest.json -Pattern 'Agila digest channel'` → the credential name only. `Select-String -Path n8n\digest.json -Pattern '"pinData": \{\s*"'` → nothing. Leave `agila-digest` published; `docker compose stop n8n` when done.
+- **The real Monday run** (after this block): if n8n is up at 09:00 on Monday 2026-11-02, the Executions tab and `agila-digest` show the scheduled run; if n8n is started later that day, one catch-up run appears (U94). Eo notes which.
+
+### Block t, part 1: Workflow A without the bot (PRD 3.0 h for all of t; do only if under 4 hours of work)
+**Shape.** Workflow `agila-save`, tested only through its **test URL** (**Execute workflow** on the canvas), so no unprotected production endpoint exists before Q6 is decided at block t (Eo's answer 6). The bot is not changed; `Invoke-RestMethod` plays the bot.
+
+| # | Node | Settings |
+| --- | --- | --- |
+| 1 | **Webhook** "Save from bot" | POST; path `agila-save`; Authentication None for part 1 (test URL only); Respond **Immediately** |
+| 2 | **HTTP Request** "Save in Agila" | POST; URL `http://api:8000/save/{{ $json.body.kind === 'text' ? 'text' : 'url' }}`; Header Auth `Agila API key`; header `X-Agila-Channel` = `n8n`; Send Body JSON, Specify Body Using JSON = `{{ $json.body.save }}` (if the field refuses an object, `{{ JSON.stringify($json.body.save) }}`; U102); Timeout `120000`. Settings: Retry On Fail, Max Tries **2**, Wait Between Tries **5000**; On Error **Continue (using error output)** |
+| 3 | **Discord** "Confirm save" (success) | credential `Agila digest channel` (Eo's answer 5); Message `{{ $json.message }}` |
+| 4 | **Discord** "Report failure" (error) | first `Could not save: Agila's API did not answer. Nothing was saved.`; after T-5, the expression that shows the API's `detail` when there is one (field path from U95), else that sentence |
+
+**Steps (Claude):** T1 none before Eo's commands (no code, no record that needs writing first). T2 **Records** after T-1 to T-8: setup-log "Day 13 (block t part 1)", the exact failure expression Eo used, research U95 and U102, status log; `decisions.md` "Workflow A part 1"; FR29's bot part stays open (block t part 2). Eo commits.
+
+**Commands Eo runs.** n8n up (R-1).
+- T-1 Build `agila-save` as in the shape. Click **Execute workflow** on the canvas before each `Invoke-RestMethod` below (test mode answers one call per click); the test URL is `http://127.0.0.1:5678/webhook-test/agila-save`.
+- T-2 Text save: `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:5678/webhook-test/agila-save -ContentType 'application/json' -Body '{"kind": "text", "save": {"title": "Pipeline check", "label": "pipeline-check", "text": "This note checks the n8n save pipeline. It has two more sentences. Then it goes."}}'` → at once a short "started" reply (V149: "Workflow got started"); then in the Discord channel `#agila-digest`: `Saved Pipeline check: 1 chunks`. Node 1's output shows the body under `body` (U102).
+- T-3 The same command again → in Discord: `Already saved, unchanged: Pipeline check (document <id>).` (a retry or a repeat adds nothing).
+- T-4 A link save that the API refuses: the body `{"kind": "url", "save": {"url": "htp://example.test"}}` → in Discord the failure message; node 2 shows two tries (Max Tries 2) and the error item; copy where `Only http and https links can be saved, and htp://example.test is neither.` appears in it (U95).
+- T-5 Set node 4's Message to show that field when present (Claude gives the expression from the T-4 field path), run T-4 again → in Discord: `Only http and https links can be saved, and htp://example.test is neither.`
+- T-6 API down: `docker compose stop api`, run T-2's command → about 5 s later: `Could not save: Agila's API did not answer. Nothing was saved.` `docker compose up -d api` → healthy.
+- T-7 Clean up: `uv run --env-file .env python -m agila.cli delete <Pipeline check id> --yes` → `Deleted document <id> "Pipeline check" and its 1 chunks.`
+- T-8 Download as `n8n\save.json`; key, token and `pinData` checks as S-14 → nothing printed. `docker compose stop n8n`.
+
+### Test counts (now: `pytest` 862 passed, `pytest -m db` 190 passed)
+| After | `pytest` (plain) | `pytest -m db` | New tests |
+| --- | --- | --- | --- |
+| Block r | 874 | 190 | 12 plain (`tests/test_compose.py`) |
+| Block s | 874 | 190 | none (workflow only) |
+| Block t part 1 | 874 | 190 | none (workflow only) |
+
+### Verification (mapped to the PRD)
+| PRD row | Proof |
+| --- | --- |
+| Block r line (a webhook "hello" workflow calls the local API) | R-6, R-9 (through `http://api:8000`, DEVIATIONS 62) |
+| FR30 (schedule + manual trigger, `/stale` to Discord, "Nothing stale this week", missed-run option, Asia/Manila) | S-3, S-5, S-9, S-12, S-13; the real Monday run |
+| FR30 acceptance ("run manually with some backdated test documents ... posted"; "no stale documents ... Nothing stale this week") | S-6 to S-9; S-5 |
+| FR39 (`/stale` returns exactly the expected ones, a backdated private document not among them) | S-8, S-9 (plus the block q tests) |
+| FR41 (never in the `/stale` output or the weekly digest) | S-8, S-9; R-10 |
+| FR29 (Webhook → `POST /save`, one retry, confirm or one readable error) | T-2 to T-6 (the bot part is block t part 2) |
+| FR32 (exported workflow files in the project folder; not published, D9) | R-11, S-14, T-8 (`n8n/` ignored, R2 test) |
+| FR23 (only Discord as outbound) | the workflows call only `http://api:8000` and the Discord webhook (shape) |
+| NFR3 (secrets only in `.env` and the n8n credentials) | R2 `test_n8n_takes_nothing_from_env`; R-12, S-14, T-8 |
+| NFR8 (logs never contain secrets) | no secret is ever typed into a node; the R-8, S-10 and T-4 error lines are read before they are copied |
+| NFR9 (RAM within 20 GB) | R-3, R-7 |
+| NFR10 (n8n holds no search, answer or filter logic) | the shapes (no Code node, V165); the private filter stays in the API (S-9) |
+| NFR11 (images pinned) | R2 `test_n8n_image_is_2_45_5_pinned_by_digest` |
+| CLAUDE.md "API only on 127.0.0.1:8000:8000" | R2 `test_api_and_db_are_still_published_only_on_127_0_0_1`; n8n only on `127.0.0.1:5678` (R-1) |
+Stop rule: any failing check stops the block; mark the step `[x] Failed (cause)`, add a dated lesson, ask Eo.
+
+### Estimate (mine, not measured)
+| Block | PRD | Claude's steps | Eo's commands |
+| --- | --- | --- | --- |
+| r | 1.0 h | 40 min (R1 records and doc read, R2 tests and service, R5) | 1.0 h |
+| s | 2.5 h | 30 min (S1, S7) | 1.5 h (S-13 is about 10 min of it) |
+| t part 1 | part of 3.0 h | 20 min (T2, the T-5 expression) | 1.0 h |
+r and s: about 3.7 h together, so t part 1 fits the 4-hour rule only if r and s go as estimated.
+
+### Files
+- **r:** change `compose.yaml`, `.gitignore`; create `tests/test_compose.py`; Eo creates `n8n/hello.json` (ignored).
+- **s, t:** Eo creates `n8n/digest.json`, `n8n/save.json` (ignored); no code.
+- **Records:** `docs/ace/plan_latest.md`, `docs/ace/research_latest.md` (and `_prev` copies before a major edit), `docs/decisions.md`, `docs/prd/modifications/DEVIATIONS.md` (rows 62 to 64), `docs/setup-log.md`.
+- **Not changed:** `.env`, `src/`, `migrations/`, `Dockerfile`, `pyproject.toml`, `uv.lock`, `eval/`, `raw/` (except the throwaway notes Eo saves and deletes), `loop-lab`, the Day 2 `n8n` container and `n8n_data` volume.
+
+### Claude's open questions for Eo (each with my recommendation)
+- **TQ1 (block q status):** the status log still shows `[~] q`, but commit `0541cd8` "Add /stale endpoint (block q)" exists. **Recommended:** you confirm Q4's hand checks passed, and I tick Q4 and Q5 in the R1 records step.
+- **TQ2 (`depends_on` for n8n):** makes `docker compose --profile n8n up -d n8n` also start `api` and `db` if they are stopped, and holds n8n until `api` is healthy (up to about 60 s after a cold start). **Recommended:** keep it (a catch-up digest then never meets a starting API). Alternative: leave it out and rely on the 5 s retry.
+- **TQ3 (screenshots in git):** FR32 wants `docs/screenshots/`, and D9 says they are never published; the repository has a GitHub remote. **Recommended:** add `docs/screenshots/` to `.gitignore` in block u (not now), as was done for `n8n/`.
+- **TQ4 (old Day 2 n8n):** the stand-alone `n8n` container (2.43.6) also uses port 5678 and would clash if started. **Recommended:** keep it stopped now (Q11), and remove it and its `n8n_data` volume after block s passes, on your word.
+- **TQ5 (`@everyone` in a title, U96):** **Recommended:** accept without a test (solo server; it would only ping you).
+- **TQ6 (Monday 2026-11-02 is Day 15):** the first real 09:00 run falls on Gate 3 day. **Recommended:** start n8n before 09:00 that morning so Gate 3 can show a scheduled run, not only a manual one.
 
 ## Status log
 Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
@@ -1114,11 +1294,18 @@ Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
 - [x] P7a (2026-10-28, Eo's answer to the report's open question): a save that supersedes a private copy inherits `laptop_only`, with or without `--private`, for all four save types (visibility only tightens; DEVIATIONS 60 updated). `library._store`: when the save supersedes copies and is not already private, `bool_or(visibility = 'laptop_only')` over the replaced rows decides. Tests (db, `test_library.py`, 5): `test_a_changed_web_page_saved_over_a_private_one_stays_private` (and its note says `visibility: laptop_only`), `test_a_text_replace_over_a_private_note_stays_private` (note too), `test_a_markdown_replace_over_a_private_note_stays_private`, `test_a_pdf_replace_over_a_private_pdf_stays_private`, `test_a_save_over_a_public_copy_stays_public` (web page and text replace; no visibility line in their notes). ruff clean, `pytest` 849 passed, `pytest -m db` 164 passed.
 - [x] P8, P9 (2026-10-28, Eo): hand checks P-1 to P-8 passed; block p committed (`10f406f`). Gate 2 check by Eo: the CLI `ask` cites "PDF page 1"; the vault listing has no private-check note. Port 8000 was blocked overnight by a WinNAT excluded range (7985-8084) and freed by a reboot (setup-log). Fresh run in the records session: ruff clean, `pytest` 849 passed, `pytest -m db` 164 passed. Records: setup-log "Day 12 (2026-10-28)", research U86 passed and U74 answered, `decisions.md` "Confirmed at Gate 2", PRD section 4 backlog (two new items).
 - [ ] Gate 2 (G1 to G2): tag `v0.2`
-- [~] q (Q1 to Q5), stretch: started 2026-10-28 (Eo: block r moves to Day 13). Scope of this session Q1 to Q3; Q4 and Q5 are Eo's.
+- [x] q (Q1 to Q5) DONE (commit `0541cd8`, pushed; Eo's Q4 hand checks passed, reported 2026-10-31): started 2026-10-28 (Eo: block r moves to Day 13). Scope of that session Q1 to Q3; Q4 and Q5 were Eo's.
 - [x] Q1 (2026-10-28): `src/agila/stale.py` (`find_stale(conn, *, now=None, limit=None, include_private=False) -> Stale`, `StaleDocument` with `document_id`, `title`, `source_type`, `saved_at`, `last_asked_at`, `reason`; `format_stale(stale)`; `LIMIT = 20`). One read-only query: active documents in the default space, never asked and older than 30 days, or older than 12 months; private only with `include_private`; oldest first, ties by id; `now` defaults to the database clock; `total` from `count(*) OVER ()`. A document past 12 months gets `older than 12 months` even when it was also never asked (the plan did not say which reason wins). `format_stale` takes only the result (the plan's `limit_note` argument is not needed: the overflow line follows from `total` > rows shown). Tests `tests/test_stale.py`, written first: 16 db (the plan's 11 cases plus: never asked and 2 years old gives the age reason; exactly 12 months and asked is not stale; dates and type carried; the database clock when `now` is not given; nothing written, no `query_log` row) with backdated rows and a fixed `now` of 2026-10-28 12:00+08:00; 6 plain (lines, the FR30 sentence, the overflow line, ≤ 25 words, `LIMIT` 20, no model/HTTP/questions import). ruff clean, `pytest` 855 passed, `pytest -m db` 180 passed.
 - [x] Q2 (2026-10-28): `api.py` `GET /stale?limit=20&include_private=false` (`limit` 1 to 100 by `Query`, else 422; `Channel`): `include_private=true` from `discord` or `n8n` → 400 `include_private=true is allowed only from the laptop.` before the database is read; reply `{documents, total, formatted}`. Tests (`test_api.py`), written first: plain `test_stale_limit_must_be_1_to_100` (0, 101, -1), `test_stale_needs_the_key`, `test_stale_include_private_from_discord_or_n8n_is_refused_before_the_database` (2); db (rows backdated by the database clock) `test_stale_route_returns_documents_total_and_formatted`, `test_stale_route_with_nothing_stale_says_so`, `test_stale_route_cuts_at_the_limit_and_says_how_many_exist`, `test_stale_from_discord_or_n8n_with_include_private_is_400` (2; without the flag the private one is not counted), `test_stale_without_a_channel_header_still_omits_private`, `test_stale_from_web_with_include_private_lists_it` (no header and `web`). ruff clean, `pytest` 861 passed, `pytest -m db` 188 passed.
 - [x] Q3 (2026-10-28): `cli.py` `stale [--include-private]` (no limit: every stale document, oldest first; prints `format_stale`, the same text as `/stale`'s `formatted`). Tests (`test_cli.py`), written first: plain `test_stale_command_prints_the_shared_text_and_passes_include_private`; db `test_stale_lists_a_backdated_document`, `test_stale_include_private_lists_the_private_document` (hidden without the flag). ruff clean, `pytest` 862 passed, `pytest -m db` 190 passed. Steps Q1 to Q3 done; next: Eo's Q4 (commands Q-1 to Q-3) and Q5. No DEVIATIONS row: nothing departs from the PRD.
-- [ ] r (R1 to R5), stretch
+- [x] Q4, Q5 (Eo): hand checks Q-1 to Q-3 passed; block q committed (`0541cd8`).
+- [x] r (R1 to R5) DONE 2026-10-31 (not committed yet; R-10 moved to block s), "Block r, s, t plan": started 2026-10-31. Scope of this session R1 and R2; R3 to R5 are Eo's and later.
+- [x] R1 (2026-10-31): `DEVIATIONS.md` row 62 (n8n calls `http://api:8000`, Refinement); `decisions.md` new section "Day 13: n8n workflows" with the eight 13.R1 answers and the TQ answers, and the Day 12 n8n line points to it; `.gitignore` gains `n8n/`; Compose startup-order page read: research V167, U103 closed (the page documents `condition: service_healthy`, so no stop).
+- [x] R2 (2026-10-31): `tests/test_compose.py` (12 plain tests, the plan's names; reads `compose.yaml` and `.gitignore` as text, ignores ` #` comments), written first: before the service, 10 failed (`compose.yaml has no service n8n`) and 2 passed (api/db publishes, `.gitignore`). Then the `n8n` service in `compose.yaml` exactly as the plan's shape (2.45.5 by digest, profile `n8n`, `127.0.0.1:5678:5678`, Asia/Manila, telemetry off, `n8n_data` volume, `depends_on` api healthy, `restart: "no"`, nothing from `.env`) and `n8n_data:` under `volumes:`. ruff clean (`ruff format --check` on the new file only), `pytest` 874 passed, `pytest -m db` 190 passed (2 warnings, both from installed starlette and discord.py, not new). Steps R1 and R2 done; next: Eo's R3 and R4 (commands R-1 to R-13), then R5.
+- [x] R3, R4 (2026-10-31, Eo, commands R-1 to R-13): n8n 2.45.5 started with the profile; editor on `127.0.0.1:5678`; owner created. `agila-hello` built as the shape; green run returned `{"documents":[],"total":0,"formatted":"Nothing stale this week"}`, Health `{"database":"ok","ollama":"ok"}`. With `api` stopped the Health node failed and curl got `{"message":"Error in workflow"}`; `api` came back healthy, n8n stayed up. Published as version "v1 hello check" (the Production Checklist pop-up closed with all three off); `/webhook/agila-hello` gave the same JSON, Executions #6 Succeeded in 86 ms. Export `n8n\hello.json` git-ignored, no key, credential name once, `pinData` empty. Then unpublished; n8n left running for block s. Not as planned: R-6 needs **Execute workflow**, not Listen for test event (wording fixed, Lessons 2026-10-31); the R-12 `pinData` pattern was too loose (fixed in R-12 and S-14); R-10 moved to block s (no `laptop_only` document exists); R-13's `docker compose stop n8n` not run (Eo keeps n8n up for s).
+- [x] R5 (2026-10-31): `docs/setup-log.md` "Day 13 (block r)"; research U90 passed for `hello.json`, U92 and U100 closed, U93 partly answered (listening time not measured), U95 first part (stopped `api`); Lessons line; plan wording fixed (R-6, the Day 12 R-6, block t shape and T-1, R-12 and S-14 `pinData` pattern, S-4 date). Fresh run: ruff clean, `pytest` 874 passed, `pytest -m db` 190 passed (2 warnings, not new). Block r done except the commit; Eo commits.
+- [ ] s (S1 to S7), Workflow B, "Block r, s, t plan"
+- [ ] t part 1 (T1, T2 and T-1 to T-8), Workflow A without the bot, only if r and s took under 4 hours
 - [ ] q, r, s, t, u, v, Gate 3, Day 15 tasks, w, x (optional)
 
 ## Drop order if behind (from PRD)

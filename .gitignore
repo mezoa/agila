@@ -29,3 +29,6 @@ package-lock.json
 
 #claude
 .claude/settings.local.json
+
+# n8n workflow exports (D9: never published; FR32 keeps them in the folder only)
+n8n/

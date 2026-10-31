@@ -128,9 +128,20 @@ Dev half only (10 questions: 7 answerable, 3 unanswerable), raw top 3 from `eval
 - **Splitting** of long replies is proven by the unit test (a 4,500-character answer arrives as 3 pieces in order), not by a live Discord reply (DEVIATIONS 59).
 - **Private (block p):** `--private` is CLI-only and only tightens (public to private, never back); a Discord or n8n save that matches a private document is refused with one sentence naming no title; a private document asked for over Discord or n8n gets `No document with id N.`; private notes are exported with `visibility: laptop_only`, public notes get no such line; a private save may supersede a public copy.
 - **`/stale` (block q):** `include_private=true` from Discord or n8n is HTTP 400.
-- **n8n (block r):** `n8nio/n8n:2.43.6` pinned by digest (2.45.x decided at block s); telemetry off; a fresh Compose volume (the Day 2 `n8n_data` volume and container are kept); n8n calls `http://api:8000` (DEVIATIONS 62); `n8n/` goes into `.gitignore`.
+- **n8n (block r):** ~~`n8nio/n8n:2.43.6` pinned by digest (2.45.x decided at block s)~~ replaced 2026-10-31 by 2.45.5, see "Day 13: n8n workflows" below; telemetry off; a fresh Compose volume (the Day 2 `n8n_data` volume and container are kept); n8n calls `http://api:8000` (DEVIATIONS 62); `n8n/` goes into `.gitignore`.
 
 ## Confirmed at Gate 2 (Eo, 2026-10-28; blocks o part 2 and p as built)
 - **Private documents are CLI-only and tighten-only:** only the CLI sets `--private` (`text`, `markdown`, `url`, `pdf`); nothing makes a private document public again, and a save that supersedes a private copy stays private, with or without `--private` (DEVIATIONS 60). Only the API channel `web` (or no header) sees private documents; `discord` and `n8n` never do.
 - **`/delete` uses a `confirm` option, not a button:** left out, it is a dry run that says what would go; `confirm:True` deletes.
 - **n8n cannot call `/ask`:** the API answers `The n8n channel cannot ask questions; use web or discord.` (400), so `query_log` keeps its three channel values (DEVIATIONS 61).
+
+## Day 13: n8n workflows (Eo, 2026-10-31; research 2t, plan "Block r, s, t plan")
+- **Image:** `n8nio/n8n:2.45.5@sha256:9f6d0a5987ab5a297c4b0b38fbf1a22285dd1364551478e93f03d506908fa74c` (all advisories of 2026-10-28 fixed; the durable scheduler is on by default, V156, V158). n8n starts only after `api` is healthy (`depends_on` with `condition: service_healthy`, V167).
+- **Missed Monday run:** the Schedule Trigger uses "Run the Most Recent Missed Execution".
+- **Digest length:** `GET /stale?limit=10`, and a text over 2,000 characters is cut at a line break with `Cut to fit Discord. Run the CLI stale for all.` (DEVIATIONS 63, written at block s).
+- **Failed digest:** posts `Weekly digest failed: Agila's API did not answer. Run the CLI stale.` (DEVIATIONS 64, written at block s).
+- **Discord:** one Discord Webhook credential for the `agila-digest` channel, shared by Workflows B and A.
+- **Workflow A protection:** decided at block t; no fourth secret now. Part 1 uses only the test URL.
+- **Workflow A reply:** the webhook answers at once; n8n posts the result to Discord.
+- **Retry:** Max Tries 2, Wait Between Tries 5000 ms, in every HTTP Request node that saves or reads.
+- **Also confirmed:** `n8n/` stays ignored by git (screenshots revisited at block u); the Day 2 `n8n` container stays stopped and is removed after block s passes, on Eo's word; `@everyone` in a title is accepted without a test (U96); Eo starts n8n before 09:00 on Monday 2026-11-02 (Day 15) so Gate 3 can show a scheduled run.

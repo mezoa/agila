@@ -51,5 +51,25 @@ services:
       retries: 3
     restart: unless-stopped
 
+  n8n:
+    # Pinned by digest (research V155, V156): every advisory of 2026-10-28 is fixed in 2.45.5.
+    image: n8nio/n8n:2.45.5@sha256:9f6d0a5987ab5a297c4b0b38fbf1a22285dd1364551478e93f03d506908fa74c
+    profiles: ["n8n"]  # not started by a plain `docker compose up -d` (V148)
+    # No value from .env: the API key and the Discord webhook live only in n8n credentials.
+    environment:
+      TZ: Asia/Manila  # the container clock
+      GENERIC_TIMEZONE: Asia/Manila  # schedule nodes (V147)
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"  # telemetry off
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "127.0.0.1:5678:5678"
+    depends_on:
+      api:
+        condition: service_healthy  # a catch-up digest never meets a starting API (V167)
+    restart: "no"
+
 volumes:
   pgdata:
+  n8n_data:
