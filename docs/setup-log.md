@@ -334,3 +334,9 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Timing gotcha: the stopwatch variable was lost once (the test moved to a different terminal window), so the clone time was rebuilt from the creation time of `agila-fresh\.git`. Lesson: start the stopwatch in the same window that runs the whole test
 - Clean-up: `docker compose -p agila-fresh down -v` -> removed only `agila-fresh` containers, network and volume; `agila_pgdata` stayed. The folder `agila-fresh` was deleted. The real stack came back healthy with the same 8 documents
 - GitHub Action (`ci`, first run after the push): green; `uv run pytest` -> 875 passed, 3 skipped, 191 deselected; the pytest step 26.65 s, the whole run 58 s
+
+## Day 14 (2026-10-31), block u part 1 (U1, U2: run by Claude)
+- `.gitignore`: under the n8n line, `# D9: screenshots and the demo video stay in the folder only (FR32), never in the public repository` and `docs/screenshots/`. `git check-ignore -v docs/screenshots/probe.png` (no file needed) -> `.gitignore:36:docs/screenshots/	docs/screenshots/probe.png`
+- Test `tests/test_compose.py::test_screenshots_are_ignored_by_git`: failed before the line, passed after. `uv run ruff check .` -> All checks passed; `uv run pytest` -> 879 passed, 191 deselected (database tests not run in this step; last count 190)
+- `docs/demo-script.md` (committable: no export, screenshot, secret, URL with a token, or personal data): four beats, about 2:00; every sentence it quotes from Agila comes from the code (`ask.py` REFUSAL, `library.py` `describe`, `stale.py` NOTHING)
+- Planned screenshots in `docs\screenshots\` (git-ignored; U3, Eo): `01-digest-canvas.png`, `02-digest-discord.png`, optional `03-hello-canvas.png`; after block t: `03-save-canvas.png`, `04-save-executions.png`, `05-save-discord.png`, `06-save-failure-discord.png` (then the optional hello shot is not needed)

@@ -118,3 +118,9 @@ def test_api_and_db_are_still_published_only_on_127_0_0_1():
 def test_n8n_exports_are_ignored_by_git():
     lines = GITIGNORE.read_text(encoding="utf-8").splitlines()
     assert "n8n/" in [line.strip() for line in lines]
+
+
+def test_screenshots_are_ignored_by_git():
+    """D9 and FR32: screenshots and the demo video stay in the folder, never in the public repo."""
+    lines = GITIGNORE.read_text(encoding="utf-8").splitlines()
+    assert "docs/screenshots/" in [line.strip() for line in lines]
