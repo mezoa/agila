@@ -687,8 +687,13 @@ def _word_chunks(real):
     return lambda title, text, is_markdown, count_tokens=None: real(title, text, is_markdown, WORDS)
 
 
+# The fake embedder in the next two tests: the real one needs the git-ignored model cache, so a
+# clean clone (and CI) would fail before the sentence under test is reached (research V181).
 def test_a_missing_exam_file_is_one_sentence(tmp_path, fake_connect, capsys):
-    assert evaluate.main(["threshold"], connect=EvalConnect(), folder=tmp_path) == 1
+    code = evaluate.main(
+        ["threshold"], connect=EvalConnect(), folder=tmp_path, embedder=RecordingEmbedder()
+    )
+    assert code == 1
     assert capsys.readouterr().out.startswith("File not found: ")
 
 
@@ -696,7 +701,8 @@ def test_an_unreachable_eval_database_is_one_sentence(monkeypatch, capsys):
     def down(**kwargs):
         raise psycopg.OperationalError("connection refused")
 
-    assert evaluate.main(["threshold"], connect=down, folder=FIXTURES) == 1
+    code = evaluate.main(["threshold"], connect=down, folder=FIXTURES, embedder=RecordingEmbedder())
+    assert code == 1
     assert capsys.readouterr().out.startswith("Cannot open the database agila_eval.")
 
 

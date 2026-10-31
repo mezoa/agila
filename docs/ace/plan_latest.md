@@ -1,6 +1,6 @@
 # Plan: Project Agila (Days 1 to 15, Oct 15 to Nov 2)
 
-- Version: v16 (2026-10-31: "Block r, s, t plan" added, draft, from Eo's 13.R1 answers; the old block r R2 image string changed to 2.45.5). Backup: `plan_prev.md` (v15, the version just before this edit). Earlier: v15 (2026-10-28: "Block o part 2, p, q, r plan" added, draft, from Eo's 12.R1 answers). Backup: `plan_prev.md` (v14, the version just before this edit). Earlier: v14 (2026-10-27: block o part 1 verified, step 8 recorded). Backup: `plan_prev.md` (the version just before this edit). Earlier: v13 (2026-10-26: Day 15 moves to Nov 2, DEVIATIONS 46). Earlier: v12 (2026-10-26: Gate 1 ticked, tag `v0.1-core`). Earlier: v11 (2026-10-26: block l done and recorded; Gate 1 not ticked). Earlier: v10 (2026-10-26: block l plan added, draft, from Eo's 9.L1 answers). Earlier: v9 (2026-10-24: block k plan added, draft). Earlier: v8 (2026-10-24: Gate 1 back to Day 9, Day 10 slack). Earlier: v7 (2026-10-23: block j plan added from Eo's 7.J1 answers). Earlier: v6 (2026-10-22: block i plan added). Earlier: v5 (2026-10-22: block h plan added). Earlier: v4 (2026-10-22: block g plan added). Earlier: v3 (2026-10-21: block f part 2 plan added, draft; earlier v2 of 2026-10-15 after the Day 1 external review, decisions in PRD Appendix D). Backup: `plan_prev.md` (v7).
+- Version: v17 (2026-10-31: "Block t, u, v plan" added, draft, from Eo's 14.R1 answers; step 0 test fix first). Backup: `plan_prev.md` (v16, the version just before this edit). Earlier: v16 (2026-10-31: "Block r, s, t plan" added, draft, from Eo's 13.R1 answers; the old block r R2 image string changed to 2.45.5). Backup: `plan_prev.md` (v15, the version just before this edit). Earlier: v15 (2026-10-28: "Block o part 2, p, q, r plan" added, draft, from Eo's 12.R1 answers). Backup: `plan_prev.md` (v14, the version just before this edit). Earlier: v14 (2026-10-27: block o part 1 verified, step 8 recorded). Backup: `plan_prev.md` (the version just before this edit). Earlier: v13 (2026-10-26: Day 15 moves to Nov 2, DEVIATIONS 46). Earlier: v12 (2026-10-26: Gate 1 ticked, tag `v0.1-core`). Earlier: v11 (2026-10-26: block l done and recorded; Gate 1 not ticked). Earlier: v10 (2026-10-26: block l plan added, draft, from Eo's 9.L1 answers). Earlier: v9 (2026-10-24: block k plan added, draft). Earlier: v8 (2026-10-24: Gate 1 back to Day 9, Day 10 slack). Earlier: v7 (2026-10-23: block j plan added from Eo's 7.J1 answers). Earlier: v6 (2026-10-22: block i plan added). Earlier: v5 (2026-10-22: block h plan added). Earlier: v4 (2026-10-22: block g plan added). Earlier: v3 (2026-10-21: block f part 2 plan added, draft; earlier v2 of 2026-10-15 after the Day 1 external review, decisions in PRD Appendix D). Backup: `plan_prev.md` (v7).
 - Read first: `PROTOCOL.md`, `research_latest.md`. PRD: `docs/PRD.md` (Draft 3.3). Hours: PRD section 5 (planned 57.0 of 63 h; slack 6.0 h includes the gate checks).
 - Stop rule: any failed verification stops work. Mark the step `[x] Failed (cause)`, add a line to the Lessons log in research, return to Research.
 - Session rule: one block per coding session where possible; fresh session after each gate.
@@ -1201,6 +1201,202 @@ r and s: about 3.7 h together, so t part 1 fits the 4-hour rule only if r and s 
 - **TQ5 (`@everyone` in a title, U96):** **Recommended:** accept without a test (solo server; it would only ping you).
 - **TQ6 (Monday 2026-11-02 is Day 15):** the first real 09:00 run falls on Gate 3 day. **Recommended:** start n8n before 09:00 that morning so Gate 3 can show a scheduled run, not only a manual one.
 
+## Block t, u, v plan (Day 14; order: step 0, v, u, t; t capped at 2 hours of building and first to drop; v may move to Day 15 morning) - DRAFT 2026-10-31, waiting for Eo's approval and VQ1 to VQ8
+Written 2026-10-31 from Eo's 14.R1 answers. Research: section 2u (V168 to V183, U102, U104 to U112), 2t (V155 to V167, U95, U96), V149. PRD Draft 3.3: blocks t, u, v (section 5), FR29, FR32, FR41, FR23, M6, M7, M9, section 12, D9, NFR3, NFR6, NFR7, NFR8, NFR10, NFR11, NFR16, drop order (Workflow A first).
+**Eo's answers (14.R1, 2026-10-31):** 1 order: test fix, then v, then u, then t last with a 2-hour cap (t may use Day 15 slack or be dropped). 2 Q6 option (b): Header Auth key on the Webhook node, a fourth secret `AGILA_N8N_SAVE_KEY` in `.env`, a DEVIATIONS row. 3 bot reply `Sent to the save pipeline; the result is posted by n8n in #agila-digest.` 4 fix the two failing `test_evaluate.py` tests by passing the fake embedder (tests only). 5 GitHub Action on `windows-latest`. 6 MIT licence. 7 `docs/screenshots/` in `.gitignore` in block u with a small test. 8 video with the Snipping Tool recorder, OBS as fallback. 9 fresh-clone test: real stack stopped, folder `agila-fresh`, new secrets, timed. 10 demo library: check the real library read-only first, no changes.
+**Hard rules:** Claude never reads or edits `.env`, runs no docker command, opens no n8n editor, makes no Discord or GitHub call that changes anything, and commits nothing; Eo commits and pushes. Every secret is typed or pasted by Eo, never into a chat, never printed (the clipboard pattern of S-14). No Code node, no AI node (V165). Never pin data. Never screenshot a credential dialog, the Webhook node's output (it holds the request headers, V172), `.env` or an environment listing. `docker compose down -v` only ever with `-p agila-fresh` (V-12). Every README command is copied from `docs/setup-log.md` or is run once in the fresh-clone test before it is called verified.
+**Not built here:** Workflow C, `ask-general`, stats, the age warning (w), video links (x), any change to the API, `/stale`, the digest workflow, or the private filter.
+
+### Step 0: the clean-clone test fix (tests only; must pass before the Action is written)
+- **0.1 (Claude)** In `tests/test_evaluate.py`, `test_a_missing_exam_file_is_one_sentence` and `test_an_unreachable_eval_database_is_one_sentence` pass `embedder=RecordingEmbedder()` to `evaluate.main` (the argument exists, V181). No change to `src/`. A one-line comment says why: the real embedder needs the git-ignored model cache.
+- **Verification (Claude):** in the project: `uv run ruff check .` clean; `uv run pytest` 874 passed; `uv run --env-file .env pytest -m db` is not needed (no db test touched). In a clean clone: `git clone` the local repository into the session scratchpad, copy the changed `tests/test_evaluate.py` over the clone's copy, then `uv sync --locked`, `uv run ruff check .`, `uv run pytest` → **871 passed, 3 skipped, 0 failed, 0 errors** (V181 had 869 + 2 failed; the 3 skips are the model tests). Any other failure stops the block (stop rule). Research: V181 gets a "fixed" note; Lessons line already written.
+- Eo commits `Fix two eval tests that needed the model cache (step 0)`.
+
+### Block v: README, LICENSE, GitHub Action, fresh-clone test (M6), backup video (PRD 2.0 h)
+**Shape.**
+- `LICENSE`: the standard MIT text from choosealicense.com (V176), `Copyright (c) 2026 <name, VQ1>`.
+- `.github/workflows/ci.yml`:
+  ```yaml
+  name: ci
+  on:
+    push:
+      branches: [main]
+    pull_request:
+  permissions:
+    contents: read
+  jobs:
+    lint-and-test:
+      runs-on: windows-latest
+      timeout-minutes: 15
+      steps:
+        - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1 (V168)
+          with:
+            persist-credentials: false  # only if U110 confirms the input in v7.0.1
+        - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0 (V169)
+          with:
+            version: "0.12.17"  # the uv of the Dockerfile and the laptop (V181)
+        - run: uv sync --locked
+        - run: uv run ruff check .
+        - run: uv run pytest
+  ```
+  No secret, no `-m db`, no `-m live`, no model download (the 3 model tests skip, V181).
+- `README.md` (outline from 2u answer 5): 1 What Agila is and is not. 2 **Host prerequisites** (Windows 10/11 with Docker Desktop on WSL2; Ollama and `ollama pull qwen3.5:4b`; uv; git; RAM note, NFR9). 3 Quick start, each step with what it prints: clone; `uv sync`; `Copy-Item .env.example .env`; new secrets for `POSTGRES_PASSWORD` and `AGILA_API_KEY` with `uv run python -c "import secrets; print(secrets.token_urlsafe(32))" | Set-Clipboard` (nothing printed), pasted into `.env` in an editor; the one-time model prefetch (setup-log Day 8); `New-Item -ItemType Directory raw\agila\files`; `docker compose up -d` (builds `api`; `docker compose ps` shows `db` and `api` healthy); `uv run --env-file .env python -m agila.db migrate` (`applied: 0001_init.sql`, `0002_...`, `0003_export.sql`); `curl.exe -s http://127.0.0.1:8000/health` → `{"database":"ok","ollama":"ok"}`; save one text with the CLI; `ask` one question about it. 4 Everyday commands (the CLI's subcommands, `/docs`). 5 Optional: the Discord bot (its four `.env` names, `--sync` once) and n8n (`docker compose --profile n8n up -d n8n`); the workflow files are not in the repository and why (D9). 6 Privacy and safety (127.0.0.1 only, `--private`, the secrets in `.env`, never `docker compose config` unfiltered). 7 Tests (`pytest`, `pytest -m db`, eval) and what CI runs. 8 Troubleshooting (the one gotcha per tool from setup-log). 9 Licence.
+- New plain test file `tests/test_project_files.py` (4 tests, text checks only): `test_license_is_mit` (first line `MIT License`, a `Copyright (c) 2026` line); `test_ci_runs_ruff_and_the_plain_tests_on_windows` (`runs-on: windows-latest`, the two `uses:` lines with their full SHAs, `version: "0.12.17"`, `uv sync --locked`, `uv run ruff check .`, `uv run pytest`); `test_ci_needs_no_secret_and_no_database` (no `secrets.`, no `-m db`, no `-m live`, `contents: read`); `test_readme_lists_the_host_prerequisites_before_the_quick_start` (the heading `Host prerequisites` comes before `Quick start`, and Docker Desktop, Ollama, `qwen3.5:4b` and uv are named between them).
+
+**Steps (Claude):**
+1. **V1 Records and one doc read.** Read `action.yml` of actions/checkout at tag v7.0.1 (U110): if `persist-credentials` is not an input, drop those two lines. `DEVIATIONS.md` rows 65 (fourth secret, for block t; written now so NFR3's change is recorded once) and 66 (Workflow A: the bot replies at once and n8n confirms in `#agila-digest`; no fallback to the direct API; the bot waits 30 s for n8n, not 120 s) as Refinements. `decisions.md` "Day 14: blocks t, u, v (Eo, 2026-10-31; research 2u)" with the ten 14.R1 answers. Verification: Eo reads the diff.
+2. **V2 Tests first, then the files.** Write `tests/test_project_files.py`; run it: 4 fail. Write `LICENSE`, `ci.yml`, `README.md`. Verification: `uv run ruff check .` clean; `uv run pytest` 878 passed (874 + 4); `ruff format` only on the new test file. README commands are compared line by line with `docs/setup-log.md`; any command not found there is marked `(checked in the fresh-clone test)` and is checked in V-7 to V-11.
+3. **V3, V4 Eo** (commands V-1 to V-14).
+4. **V5 Records.** setup-log "Day 14 (block v)" (the Action's run time and counts, the fresh-clone times per step, the total, the clean-up); research U107, U109, U110 closed or updated; README corrected if any command differed (then re-committed by Eo); status log.
+5. **V6 Video** is recorded last (commands V-15 to V-17), after block u's demo script and after t (or after t is dropped), so it shows the final demo.
+
+**Commands Eo runs.** Before: `Get-ChildItem Env: | Where-Object Name -match 'AGILA|POSTGRES|DISCORD|N8N' | Select-Object Name` → nothing.
+- **Push and the Action**
+  - V-1 Read the diff; commit `Add README, MIT licence and CI (block v)`; `git push`.
+  - V-2 On github.com: the repository → **Actions** → the `ci` run for that push → green; open the `uv run pytest` step: **875 passed, 3 skipped** (step 0 and block v's 4 tests; plus the deselected db and live tests); note the run time (U107). If red: copy the failing test names only, stop, tell Claude.
+- **Fresh-clone test (M6)**
+  - V-3 Safety first, in the real folder: `uv run --env-file .env python scripts/backup.py` → a size and `documents N, chunks M` (note N and M). `uv run --env-file .env python -m agila.cli list` → note the number of rows.
+  - V-4 Stop everything that holds the ports: the bot (Ctrl+C in its window); `docker compose stop n8n`; `docker compose stop` → `docker compose ps` lists nothing running. `Get-NetTCPConnection -State Listen -LocalPort 5433,8000,5678 -ErrorAction SilentlyContinue` → nothing. `ollama list` → `qwen3.5:4b` is there (Ollama stays running; it is a host prerequisite, excluded from M6).
+  - V-5 `cd ..` (to `C:\Users\Meo Angelo Alcantara`). `$sw = [Diagnostics.Stopwatch]::StartNew()`. `git clone https://github.com/mezoa/agila.git agila-fresh`; `cd agila-fresh`. **From here follow only `README.md`**, and after each README step write down `$sw.Elapsed.ToString('mm\:ss')`.
+  - V-6 `uv sync` → `.venv` created (time noted; uv's package cache makes it faster than a stranger's: say so in the record).
+  - V-7 `Copy-Item .env.example .env`; for `POSTGRES_PASSWORD` and `AGILA_API_KEY`: the README's clipboard command, paste into `.env` in an editor, then `Set-Clipboard -Value ' '`. These are **new** values, never the real `.env`'s. Discord lines stay empty.
+  - V-8 The model prefetch → `model cached` (a model download: time noted separately, M6 excludes downloads but block k's note counts it; report both totals).
+  - V-9 `New-Item -ItemType Directory raw\agila\files`; `docker compose up -d` → the `agila-fresh-api` image builds (base images are already cached: note it), then `docker compose ps` → `agila-fresh-db-1` and `agila-fresh-api-1` healthy (U109: the names carry `agila-fresh`).
+  - V-10 `uv run --env-file .env python -m agila.db migrate` → `applied:` lines for 0001, 0002, 0003. `curl.exe -s http://127.0.0.1:8000/health` → `{"database":"ok","ollama":"ok"}`.
+  - V-11 `"Agila fresh check: the fresh clone test note says the harbour lights are green on Tuesdays. Nothing else is here. It is deleted with the folder." | uv run --env-file .env python -m agila.cli text --title "Fresh check" --label fresh-check` → `Saved Fresh check: 1 chunks`. `uv run --env-file .env python -m agila.cli ask "What colour are the harbour lights on Tuesdays?"` → passages, then a cited answer naming green (or the passages-only fallback with its note; a refusal is a failure). `$sw.Elapsed` → **20:00 or less** is M6's pass (excluding the downloads of V-8 and any image pull).
+  - V-12 Clean up, in `agila-fresh` only: `docker volume ls` → both `agila-fresh_pgdata` and the real `agila_pgdata` are listed (U109). `docker compose -p agila-fresh down -v` → only `agila-fresh-*` containers, the `agila-fresh_default` network and `agila-fresh_pgdata` removed. `docker volume ls` → `agila_pgdata` still there. `docker image rm agila-fresh-api`.
+  - V-13 `cd ..\agila`; `Remove-Item -Recurse -Force ..\agila-fresh` (check the path names `agila-fresh` before Enter).
+  - V-14 Real stack back: `docker compose up -d` → `db` and `api` healthy; `curl.exe -s http://127.0.0.1:8000/health` → both ok; `... agila.cli list` → the same row count as V-3. Restart the bot if needed.
+- **Backup video (M9), after block u and t**
+  - V-15 A 10-second test: Snipping Tool → **Record** → **New** (or Win+Shift+R), select an area, Start, Stop, save → note the format, folder and whether the microphone was recorded (U108). If recording fails or has no narration option you want, use OBS 33.0.1 instead (V179) and note it.
+  - V-16 Run section 12 items 1 to 5 first (laptop plugged in; Docker, Ollama, bot, n8n up; one warm-up question). Record 2 to 3 minutes following `docs/demo-script.md`; nothing secret on screen (block u rules). Save as `docs\screenshots\demo-backup.<ext>` (git-ignored after block u).
+  - V-17 Play it back once, start to end; `git check-ignore -v docs/screenshots/demo-backup.<ext>` → the `docs/screenshots/` rule.
+
+### Block u: screenshots, exports, demo script (PRD 1.5 h)
+**Shape.** `.gitignore` gains `docs/screenshots/` under the n8n line, with the comment `# D9: screenshots and the demo video stay in the folder only (FR32), never in the public repository`. Test `test_screenshots_are_ignored_by_git` in `tests/test_compose.py` (next to `test_n8n_exports_are_ignored_by_git`; a `.gitignore` line exactly `docs/screenshots/`). `docs/demo-script.md` (committed; holds no export, screenshot or secret): a two-minute script in four beats, each with what to say in one or two sentences and what to click: (1) the problem and the rule "answers only from my saved material, or a refusal" (CLI or Discord `/ask` with passages then a cited answer); (2) a refusal; (3) `/save` (through n8n if t is done, else direct) and its confirmation; (4) the n8n canvas of `agila-digest` and the digest in Discord, plus one sentence on privacy (`--private`, 127.0.0.1). A last line: "If anything fails: play `docs/screenshots/demo-backup.*`."
+**Steps (Claude):**
+1. **U1 Test, then the ignore line.** Test fails, add the line, test passes. Verification: ruff clean; `uv run pytest` 879 passed.
+2. **U2 Demo script** drafted from section 12 and the real sentences (`Sent to the save pipeline...`, `Nothing stale this week`, the refusal sentence); Eo edits the wording.
+3. **U3 Eo** (commands U-1 to U-7). **U4 Records**: setup-log "Day 14 (block u)", the screenshot list with file names, the demo-library result; status log.
+**Commands Eo runs.**
+- U-1 `New-Item -ItemType Directory docs\screenshots`; `New-Item docs\screenshots\probe.png`; `git check-ignore -v docs/screenshots/probe.png` → `.gitignore:<line>:docs/screenshots/	docs/screenshots/probe.png`; `Remove-Item docs\screenshots\probe.png`.
+- U-2 Demo library, read only (answer 10): `uv run --env-file .env python -m agila.cli list` → look for at least one `pdf`, one `archived`, one `superseded` and some active items (section 12 item 3). Report which are missing; change nothing. Claude then proposes how to fill a gap (VQ5).
+- U-3 n8n up (R-1). Screenshots with **Win+Shift+S → Rectangle**, region only, each looked at before it is moved from `Pictures\Screenshots` to `docs\screenshots\` with these names: `01-digest-canvas.png` (the `agila-digest` canvas), `02-digest-discord.png` (the latest digest in `#agila-digest`). After block t (or now, if t is dropped, the set ends here plus `03-hello-canvas.png`): `03-save-canvas.png`, `04-save-executions.png` (the Executions list of `agila-save`, list only, no run opened), `05-save-discord.png` (the bot's reply and n8n's confirmation), `06-save-failure-discord.png` (the failure sentence).
+- U-4 Before saving each: no credential dialog, no Webhook node output, no `.env`, no webhook URL, no notification banner in the region.
+- U-5 Exports present: `Get-ChildItem n8n` → `hello.json`, `digest.json` (and `save.json` after t). The S-14 checks already passed for these two; nothing to repeat unless re-downloaded.
+- U-6 `git status --porcelain docs/screenshots n8n` → nothing printed (all ignored).
+- U-7 Read `docs/demo-script.md` aloud once with a timer: 2:00 ± 0:20; Claude shortens it if longer. Eo commits `Ignore screenshots; add the demo script (block u)`.
+
+### Block t: Workflow A with the bot (PRD 3.0 h; **stop rule: 2 hours of building** by Claude and Eo together, counted from T1; at 2 hours stop where it stands, record it, and either finish from Day 15 slack after Gate 3 or drop it; Workflow B stays the portfolio minimum)
+**Shape, n8n.** Workflow `agila-save` (2t answer 3, block t part 1 shape) with the Webhook protected:
+
+| # | Node | Settings |
+| --- | --- | --- |
+| 1 | **Webhook** "Save from bot" | POST; path `agila-save`; Authentication **Header Auth** → credential `Agila n8n save key` (Name `X-Agila-Save-Key`, Value = the key); Respond **Immediately** |
+| 2 | **HTTP Request** "Save in Agila" | POST; URL `http://api:8000/save/{{ $json.body.kind === 'text' ? 'text' : 'url' }}`; Header Auth `Agila API key`; header `X-Agila-Channel` = `n8n`; Send Body JSON, Using JSON = `{{ $json.body.save }}` (else `{{ JSON.stringify($json.body.save) }}`); Timeout `120000`. Settings: Retry On Fail, Max Tries **2**, Wait **5000**; On Error **Continue (using error output)** |
+| 3 | **Discord** "Confirm save" (success) | credential `Agila digest channel`; Message `{{ [$json.message, $json.warning, $json.export_warning].filter(x => x).join('\n').slice(0, 1990) }}` (if U105 refuses the arrow: `{{ ($json.message + ($json.warning ? '\n' + $json.warning : '') + ($json.export_warning ? '\n' + $json.export_warning : '')).slice(0, 1990) }}`) |
+| 4 | **Discord** "Report failure" (error) | first `Could not save: Agila's API did not answer. Nothing was saved.`; after T-6 the expression that shows the API's `detail` when present (field path from U95), else that sentence |
+
+**Shape, bot (smallest change; `commands.py` unchanged).**
+- `client.py`: `N8N_SAVE_URL = "http://127.0.0.1:5678/webhook/agila-save"`; `SAVE_KEY_HEADER = "X-Agila-Save-Key"`; `N8N_SECONDS = 30.0`; `AgilaApi(key, transport=None, save_key=None)`. With `save_key`, `save_link` and `save_text` build the same `save` body as today (`label or title` stays where it is) and POST `{"kind": "url" | "text", "save": {...}}` to n8n through a **second** `httpx.AsyncClient` whose only header is `X-Agila-Save-Key` (never `X-API-Key` or `X-Agila-Channel`, so the API key never lands in n8n's saved run data, V172), `trust_env=False`, same transport in tests; `aclose` closes both. On 200 it returns `{"message": N8N_SENT, "outcome": "sent-to-n8n"}`, so `save_reply` and `_save` need no change. No fallback to the API.
+- Exact sentences (NFR7, at most 25 words; tests compare them word for word):
+  - `N8N_SENT` = `Sent to the save pipeline; the result is posted by n8n in #agila-digest.`
+  - connection refused or other transport error = `n8n is not answering at 127.0.0.1:5678; nothing was saved. Start n8n or set SAVE_VIA_N8N=false.`
+  - 404 (U104; the expected answer when `agila-save` is not published) = `The n8n save workflow is not published; nothing was saved. Publish agila-save in n8n.`
+  - 403 (V172) = `n8n refused the bot's save key; nothing was saved. Check AGILA_N8N_SAVE_KEY.`
+  - timeout after the connection = `n8n did not confirm within 30 seconds; the save may still run. Check #agila-digest before saving again.`
+  - any other status = `n8n answered with HTTP <code>; check #agila-digest before saving again.`
+- `__main__.py`: `SAVE_VIA_N8N` is on only for the exact value `true`; when on, `AGILA_N8N_SAVE_KEY` is required (the existing `_required` sentence, naming the variable, never the value) and the start prints `Saves go through n8n (SAVE_VIA_N8N=true).`; the client is built with `save_key`. When off, nothing changes. The docstring lists the two names.
+- `.env.example` gains `SAVE_VIA_N8N=false` and `AGILA_N8N_SAVE_KEY=` (empty) with a one-line comment. Eo edits `.env`.
+- Log: `command=save-link result=sent-to-n8n` or `error=<kind>` (the existing `_done` line); never the link, text or key.
+- `tests/botfakes.py`: `FakeApi` also records each request's headers; a `run(..., save_key=...)` option. The **fake n8n server** is a route `POST /webhook/agila-save` on the same `httpx.MockTransport` (no network; the net guard stays on).
+
+**Tests (19 plain, all with the fakes; no network, no n8n, no Discord):**
+- `tests/test_bot_client.py` (11): `test_with_a_save_key_a_link_goes_to_n8n_not_the_api` (one request, route `POST /webhook/agila-save`, host `127.0.0.1:5678`, body exactly `{"kind":"url","save":{"url":...,"title":...,"replace":false}}`, no `/save/url` request); `test_with_a_save_key_text_goes_to_n8n_with_the_label_defaulting_to_the_title`; `test_the_n8n_request_carries_the_save_key_and_never_the_api_key` (`X-Agila-Save-Key` = the test key; no `X-API-Key`, no `X-Agila-Channel`); `test_n8n_ok_returns_the_sent_sentence`; `test_n8n_down_is_one_sentence_and_the_api_is_not_called` (`httpx.ConnectError`); `test_n8n_404_says_the_workflow_is_not_published`; `test_n8n_403_says_the_save_key_was_refused`; `test_n8n_timeout_says_the_save_may_still_run` (`httpx.ReadTimeout`); `test_n8n_other_status_names_the_code` (500); `test_without_a_save_key_saves_still_go_to_the_api`; `test_with_a_save_key_ask_list_archive_and_delete_still_go_to_the_api`.
+- `tests/test_bot_commands.py` (2): `test_save_via_n8n_replies_with_the_sent_sentence_and_pings_nobody` (defer first, one edit, `allowed_mentions` is `NO_PINGS`); `test_every_n8n_sentence_is_at_most_25_words`.
+- `tests/test_bot_main.py` (6): `test_save_via_n8n_needs_the_save_key` (exit 1, the sentence names `AGILA_N8N_SAVE_KEY`, no value printed); `test_save_via_n8n_on_builds_the_client_with_the_key_and_says_so`; `test_save_via_n8n_is_off_unless_exactly_true` (parametrized `TRUE`, `1`, `yes`, empty: 4 cases, the client has no save key); `test_env_example_lists_the_n8n_names_with_safe_values` (`SAVE_VIA_N8N=false`, `AGILA_N8N_SAVE_KEY=` empty). (That is 3 functions plus 3 extra parametrized cases = 6 test ids; total 11 + 2 + 6 = 19.)
+
+**Steps (Claude), inside the 2-hour cap:**
+1. **T1 Tests first** (fakes, then the 19 tests; they fail).
+2. **T2 Code** (`client.py`, `__main__.py`, `.env.example`, `botfakes.py`). Verification: ruff clean; `uv run pytest` 898 passed (879 + 19); `uv run --env-file .env pytest -m db` 190 passed; no `ruff format` (no new source file; never on whole existing files).
+3. **T3 Eo** (commands T-1 to T-16). **T4 Records**: setup-log "Day 14 (block t)", the failure expression used, research U95 (closed), U102 (seen), U104, U105, U106 if tried; status log; `decisions.md` "Workflow A". Eo commits `Route Discord saves through n8n when SAVE_VIA_N8N=true (block t)`.
+
+**Commands Eo runs.** n8n up (R-1); Ollama not needed.
+- **Key**
+  - T-1 `uv run python -c "import secrets; print(secrets.token_urlsafe(32))" | Set-Clipboard` → nothing printed. Open `.env` in the editor; add `AGILA_N8N_SAVE_KEY=` and paste; add `SAVE_VIA_N8N=false`; save. n8n: **Create** → **Credential** → **Header Auth**, named `Agila n8n save key`: Name `X-Agila-Save-Key`, Value pasted; Save. `Set-Clipboard -Value ' '`.
+- **Workflow without the bot (test URL; click Execute workflow before each call)**
+  - T-2 Build `agila-save` as the shape. `$h = @{ 'X-Agila-Save-Key' = (Select-String -Path .env -Pattern '^AGILA_N8N_SAVE_KEY=(.+)').Matches[0].Groups[1].Value }`.
+  - T-3 `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:5678/webhook-test/agila-save -Headers $h -ContentType 'application/json' -Body '{"kind": "text", "save": {"title": "Pipeline check", "label": "pipeline-check", "text": "This note checks the n8n save pipeline. It has two more sentences. Then it goes.", "replace": false}}'` → a short started reply; in `#agila-digest`: `Saved Pipeline check: 1 chunks`. Node 1's output has the body under `body` (U102 seen; do not screenshot it, it shows the headers).
+  - T-4 The same call **without** `-Headers $h` → `Invoke-RestMethod` fails with **403** (V172); nothing in Discord.
+  - T-5 T-3 again → `Already saved, unchanged: Pipeline check (document <id>).`
+  - T-6 Body `{"kind": "url", "save": {"url": "htp://example.test", "title": null, "replace": false}}` → the failure message; node 2 shows two tries; copy where `Only http and https links can be saved, and htp://example.test is neither.` sits in the error item (U95); Claude gives node 4's expression; run again → that sentence in Discord.
+  - T-7 `docker compose stop api`; T-3's call → about 14 s later (block s timing) `Could not save: Agila's API did not answer. Nothing was saved.`; `docker compose up -d api` → healthy.
+  - T-8 Before Publish: `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:5678/webhook/agila-save -Headers $h -ContentType 'application/json' -Body '{}'` → the status and message (U104; expected 404). Then **Publish** (Shift+P); read the version label.
+- **Through the bot**
+  - T-9 In `.env` set `SAVE_VIA_N8N=true`; restart the bot (`uv run --env-file .env python -m agila.bot`) → it prints `Saves go through n8n (SAVE_VIA_N8N=true).` (no `--sync`: the commands did not change).
+  - T-10 Discord `/save text` title `Pipeline bot check`, text `This note checks the bot route through n8n. It has two more sentences. Then it goes.` → at once `Sent to the save pipeline; the result is posted by n8n in #agila-digest.`; in `#agila-digest`: `Saved Pipeline bot check: 1 chunks`; the Executions tab shows the run Succeeded.
+  - T-11 `/save link` url `htp://example.test` → the sent sentence, then in `#agila-digest` the http sentence (FR29's readable error).
+  - T-12 Private (FR41, FR23): `"Private pipeline check: this private note must never pass through n8n. It is deleted today. Nothing else is here." | uv run --env-file .env python -m agila.cli text --title "Private pipeline check" --label private-pipeline-check --private` → saved. Discord `/save text` title `Other`, label `private-pipeline-check`, text `Any three sentences here. Two more. Done.` → in `#agila-digest`: `A private document already uses this link or label; save it from the laptop.`; neither Discord nor the n8n run's output shows `Private pipeline check`.
+  - T-13 `docker compose stop n8n`; `/save text` title `n8n down check` → `n8n is not answering at 127.0.0.1:5678; nothing was saved. Start n8n or set SAVE_VIA_N8N=false.`; `... agila.cli list` → no `n8n down check`. `docker compose --profile n8n up -d n8n`.
+  - T-14 `Select-String -Path logs\bot.log -Pattern 'command=save'` → lines with `result=sent-to-n8n` or `error=...` only; no link, text or key.
+- **Clean up and export**
+  - T-15 Delete `Pipeline check`, `Pipeline bot check`, `Private pipeline check` with `... agila.cli delete <id> --yes`. Screenshots 03 to 06 of block u now (if not yet taken).
+  - T-16 Download as `n8n\save.json`; the S-14 checks (API key, webhook token, `pinData`, credential names) plus the save key: `$k = $h['X-Agila-Save-Key']; Select-String -Path n8n\save.json -SimpleMatch $k; Remove-Variable k, h` → nothing printed. Decide `SAVE_VIA_N8N` for daily use (VQ7). `docker compose stop n8n` when done.
+
+### Test counts (now: `pytest` 874 passed, `pytest -m db` 190 passed; a clean clone: 869 + 2 failed + 2 errors + 3 skipped)
+| After | `pytest` (laptop) | clean clone / CI | `pytest -m db` | New tests |
+| --- | --- | --- | --- | --- |
+| Step 0 | 874 | 871 passed, 3 skipped | 190 | none (2 fixed) |
+| Block v | 878 | 875 passed, 3 skipped | 190 | 4 (`test_project_files.py`) |
+| Block u | 879 | 876 passed, 3 skipped | 190 | 1 (`test_compose.py`) |
+| Block t | 898 | 895 passed, 3 skipped | 190 | 19 (bot) |
+
+### Verification (mapped to the PRD)
+| PRD row | Proof |
+| --- | --- |
+| FR29 (Webhook → `POST /save`, one retry, confirm in Discord or one readable error) | T-3, T-5 to T-7, T-10, T-11; bot tests (sent sentence, no fallback) |
+| FR41, FR23 (private never through the bot or n8n) | T-12; the API refusal stays the only filter (NFR10) |
+| FR32 (exports, screenshots, demo script, setup-log in the folder; not published, D9) | U-1, U-3, U-5, U-6, T-16; `test_n8n_exports_are_ignored_by_git`, `test_screenshots_are_ignored_by_git`; `docs/demo-script.md` |
+| M6 (fresh clone, README only, working `ask` in 20 minutes or less, prerequisites first) | V-5 to V-11 timed; `test_readme_lists_the_host_prerequisites_before_the_quick_start` |
+| M7 (`v1.0` tagged; runs from a fresh clone) | M6 here; the tag on Day 15 after Gate 3 (not in this plan) |
+| M9 and section 12 (checklist, 2 to 3 minute backup video) | U-2 (item 3), U-7, V-15 to V-17; the full checklist run on Day 15 |
+| NFR3 (secrets only in `.env` and n8n credentials; now four, DEVIATIONS 65) | T-1 (never printed), T-16, V-7 (new values), `test_ci_needs_no_secret_and_no_database` |
+| NFR6 (offline tests) | step 0 clean-clone run; all new tests use fakes; CI runs no `-m db` or `-m live` |
+| NFR7 (one readable sentence) | the n8n sentences test (at most 25 words); T-4, T-13 |
+| NFR8 (logs never hold secrets or text) | T-14; the n8n request never carries the API key (client test) |
+| NFR10 (bot and n8n hold no search or answer logic) | `commands.py` unchanged; the existing structure test; no Code node |
+| NFR11 (pinning) | actions by full SHA, uv 0.12.17 (`test_ci_runs_...`) |
+| NFR16 (LICENSE, one Action running ruff and pytest) | `test_license_is_mit`, V-2 green run |
+| CLAUDE.md (API only on `127.0.0.1:8000:8000`) | unchanged; `test_api_and_db_are_still_published_only_on_127_0_0_1` |
+Stop rule: any failing check stops the block; mark the step `[x] Failed (cause)`, add a dated lesson, ask Eo. Block t also stops at 2 hours of building (not a failure: record where it stopped).
+
+### Estimate (mine, not measured)
+| Block | PRD | Claude | Eo | Note |
+| --- | --- | --- | --- | --- |
+| Step 0 | (slack) | 15 min | 5 min (commit) | |
+| v | 2.0 h | 50 min (V1, V2, V5) | 1.25 h (Action 10 min, fresh clone and clean-up 45 to 60 min) + video 30 min | v may move to Day 15 morning |
+| u | 1.5 h | 25 min | 45 min | screenshots 03 to 06 come with t |
+| t | 3.0 h | 50 min | 1.25 h | **capped at 2 h total**; first to drop |
+Day 14 holds about 4.5 h before t starts (step 0, v without the video, u); t and the video then fall into Day 15's slack (4.0 h, PRD section 5) together with Gate 3. If v runs over, the fresh-clone test (V-3 to V-14) moves to Day 15 morning, before Gate 3.
+
+### Files
+- **Step 0:** change `tests/test_evaluate.py`.
+- **v:** create `README.md` (replaces the 7-byte file), `LICENSE`, `.github/workflows/ci.yml`, `tests/test_project_files.py`.
+- **u:** change `.gitignore`, `tests/test_compose.py`; create `docs/demo-script.md`; Eo creates `docs/screenshots/*` (ignored).
+- **t:** change `src/agila/bot/client.py`, `src/agila/bot/__main__.py`, `.env.example`, `tests/botfakes.py`, `tests/test_bot_client.py`, `tests/test_bot_commands.py`, `tests/test_bot_main.py`; Eo creates `n8n/save.json` (ignored) and edits `.env`.
+- **Records:** `docs/ace/plan_latest.md`, `docs/ace/research_latest.md` (and `_prev` before a major edit), `docs/decisions.md`, `docs/prd/modifications/DEVIATIONS.md` (rows 65, 66), `docs/setup-log.md`.
+- **Not changed:** `src/` outside `bot/`, `migrations/`, `compose.yaml`, `Dockerfile`, `pyproject.toml`, `uv.lock`, `eval/`, `loop-lab`, the `agila-digest` and `agila-hello` workflows.
+
+### Claude's open questions for Eo (each with my recommendation)
+- **VQ1 (name in LICENSE):** **Recommended:** `Copyright (c) 2026 Meo Angelo Alcantara`. Alternative: `Meo` (the git name) or a handle.
+- **VQ2 (Action on Windows has no Linux check):** **Recommended:** `windows-latest` only, as you chose; add `ubuntu-latest` later only if someone asks.
+- **VQ3 (CI badge in the README):** **Recommended:** no badge (one less thing to keep right); the Actions tab is the proof.
+- **VQ4 (`pyproject.toml` description still "Add your description here"):** a stranger sees it, but changing it touches `pyproject.toml`. **Recommended:** a one-line description in block v (no dependency change; `uv lock --check` stays clean, checked by `uv sync --locked` in CI). Alternative: leave it.
+- **VQ5 (demo library gaps, after U-2):** if no superseded or archived item exists, **Recommended:** create them with throwaway notes saved, replaced (`--replace`) and archived through the CLI, deleted after Day 15; your real documents stay untouched.
+- **VQ6 (video before or after t):** **Recommended:** record after t is done or dropped, so the video matches the final demo; if Day 15 gets tight, record right after u with the direct `/save` and re-record only if time allows.
+- **VQ7 (`SAVE_VIA_N8N` after block t):** **Recommended:** `false` for daily use (saves work without n8n running), `true` only for demos; the demo script says to switch it and restart the bot.
+- **VQ8 (fresh clone from GitHub needs the push first):** V-5 clones what is pushed, so step 0 and block v must be pushed before it. **Recommended:** yes, push after V2; the Action run (V-2) is then also the first proof that the pushed tree is green.
+
 ## Status log
 Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
 - [x] 1.1 Draft 3.3 saved; [x] 1.2 review triaged and accepted by Eo; [x] 1.3 acceptance sentences cover every in-scope FR (NFR15, NFR16 added); [x] 1.4 `CLAUDE.md` drafted (Eo to read and edit); [x] 1.5 commit 81ca19f; [x] 1.6 board decision
@@ -1308,7 +1504,11 @@ Legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[x] Failed (cause)`.
 - [x] S1 (2026-10-31): `DEVIATIONS.md` row 63 (digest at most 10 documents, a text over 2,000 characters cut at a line break with one sentence; FR30, FR39's limit [assumed]; Refinement) and row 64 (a failed digest posts `Weekly digest failed: Agila's API did not answer. Run the CLI stale.`; FR30 is silent; Gap filled). Fresh run: ruff clean, `pytest` 874 passed, `pytest -m db` 190 passed (2 warnings, not new). Next: Eo's S2 to S6 (commands S-1 to S-14), then S7.
 - [x] S2 to S6 (2026-10-31, Eo, commands S-1 to S-13): credential `Agila digest channel` (Discord Webhook) created, its test passed; `agila-digest` built as the shape (both triggers feed node 3, U101), timezone Asia/Manila, published as "v1 weekly digest" (U12 seen). Empty digest: Discord and the CLI `stale` both said `Nothing stale this week`. Throwaway notes 35 (`Digest check`) and 36 (`Private digest check`, private), backdated 40 days (`UPDATE 2`): `stale --include-private` listed 2, `stale` listed 35 only; Discord `Stale documents: 1.` with one line for 35, node output only 35, the private title nowhere (FR41). Both deleted; `stale --include-private` then `Nothing stale this week`. API down: the failure sentence in Discord after about 14 s (plan said about 5 s); Executions shows Succeeded (U99). Catch-up (U94): one run at 15:31:28 on the second attempt; the first was invalid (n8n stopped one minute after the trigger time); `missed-run check` unpublished and deleted. S-14 export (U90): `digest.json` git-ignored, no key, no webhook token, no `discord.com/api/webhooks`, `Agila digest channel` twice as a name only, no pinned data (U97); n8n stopped, `api` and `db` healthy. Not done: the error item text (U95), the `@everyone` test (U96, accepted).
 - [x] S7 (2026-10-31): `docs/setup-log.md` "Day 13 (block s)"; research U12, U94, U99, U101 closed, U95 partly, U96 not tested, U97 pending Eo's export result; Lessons line; `decisions.md` (block t moves to Day 14, catch-up works, Discord node in webhook mode). Fresh run: ruff clean, `pytest` 874 passed, `pytest -m db` 190 passed (2 warnings, not new). Eo commits.
-- [ ] t part 1 (T1, T2 and T-1 to T-8), Workflow A without the bot: MOVED TO DAY 14 (2026-10-31, Eo: the 4-hour rule was reached at about 14:15)
+- [ ] t part 1 (T1, T2 and T-1 to T-8), Workflow A without the bot: MOVED TO DAY 14 (2026-10-31, Eo: the 4-hour rule was reached at about 14:15) -> replaced by "Block t, u, v plan" (block t there includes part 1)
+- [~] Step 0, v, u, t: plan written 2026-10-31 ("Block t, u, v plan", from Eo's 14.R1 answers). Draft, waiting for Eo's approval and VQ1 to VQ8. Order: step 0 (0.1), v (V1 to V6), u (U1 to U4), t (T1 to T4, 2-hour cap, first to drop). APPROVED 2026-10-31 (Eo; VQ1 holder `Meo Angelo Alcantara`, no CI badge, `pyproject.toml` description fixed).
+- [x] 0.1 (2026-10-31): `tests/test_evaluate.py`, the two `threshold` tests pass `embedder=RecordingEmbedder()` (tests only, no `src/` change). ruff clean; laptop `pytest` 874 passed; clean clone in the temp folder 871 passed, 3 skipped, 0 failed (was 869 + 2 failed + 2 errors, V181).
+- [x] V1 (2026-10-31): DEVIATIONS rows 65 (fourth secret `AGILA_N8N_SAVE_KEY`) and 66 (bot replies at once, n8n confirms in `#agila-digest`, no fallback, 30 s); `decisions.md` "Day 14: blocks t, u, v"; setup-log "Day 14, step 0 and block v part 1". U110 read: checkout v7.0.1 has `persist-credentials` (default `true`) and runs on `node24`, so the `persist-credentials: false` lines stay.
+- [x] V2 (2026-10-31): `tests/test_project_files.py` written first (4 failed), then `LICENSE` (MIT, `Copyright (c) 2026 Meo Angelo Alcantara`, standard text from the GitHub licence API), `.github/workflows/ci.yml` (as the shape), `README.md` (host prerequisites before the quick start, no badge), `pyproject.toml` description (`uv lock --check` clean). ruff clean; `ruff format` on the new test file only (unchanged); laptop `pytest` 878 passed, `pytest -m db` 190 passed; clean clone 875 passed, 3 skipped. README commands not in setup-log, marked "(checked in the fresh-clone test)": `ollama pull qwen3.5:4b`, `git clone https://github.com/mezoa/agila.git`, `Copy-Item .env.example .env`, the `secrets.token_urlsafe` clipboard command. Not committed (Eo). Next: V3, V4 (Eo, V-1 to V-14).
 - [ ] q, r, s, t, u, v, Gate 3, Day 15 tasks, w, x (optional)
 
 ## Drop order if behind (from PRD)

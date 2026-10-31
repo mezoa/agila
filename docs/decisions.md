@@ -148,3 +148,16 @@ Dev half only (10 questions: 7 answerable, 3 unanswerable), raw top 3 from `eval
 - **Block t moves to Day 14 (Eo, 2026-10-31):** the 4-hour rule was reached at about 14:15 on Day 13, so Workflow A (block t) was not started.
 - **The catch-up works (block s, U94):** after a restart, n8n 2.45.5 ran one missed Schedule Trigger execution ("Run the Most Recent Missed Execution"); seen over minutes, not yet over a laptop-off of hours.
 - **Digest posting:** Workflow B posts with the **Discord node in webhook mode** (credential `Agila digest channel`), so the webhook URL lives only in the credential, not in a node field. The editor shows the label "sendLegacy: undefined" under the Discord nodes; harmless.
+
+## Day 14: blocks t, u, v (Eo, 2026-10-31; research 2u, plan "Block t, u, v plan")
+- **Order:** step 0 (the test fix), then v, then u, then t last with a cap of 2 hours of building; t may use Day 15 slack or be dropped (first in the drop order). Block v may move to Day 15 morning.
+- **Step 0:** the two `test_evaluate.py` tests that needed the git-ignored model cache now pass the fake embedder (tests only). A clean clone shows 871 passed, 3 skipped, 0 failed (research V181).
+- **Workflow A protection:** Header Auth on the Webhook node with a fourth secret, `AGILA_N8N_SAVE_KEY` (DEVIATIONS 65).
+- **Bot reply for a save through n8n:** `Sent to the save pipeline; the result is posted by n8n in #agila-digest.`; no fallback to the API (DEVIATIONS 66).
+- **CI:** one GitHub Action on `windows-latest`: `ruff` and the plain `pytest`, actions pinned to exact commits, uv 0.12.17, no secret, no database.
+- **Licence:** MIT.
+- **Screenshots:** `docs/screenshots/` goes into `.gitignore` in block u, with a small test (D9; the repository is public).
+- **Backup video:** the Snipping Tool recorder; OBS as the fallback.
+- **Fresh-clone test:** the real stack stopped, folder `agila-fresh`, new secrets, timed.
+- **Demo library:** the real library is checked read-only first; nothing is changed.
+- **Plan questions (VQ1 to VQ8):** the LICENSE holder is Eo's choice; no CI badge; the `pyproject.toml` description is fixed in block v.

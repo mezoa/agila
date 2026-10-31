@@ -1,7 +1,7 @@
 [project]
 name = "agila"
 version = "0.1.0"
-description = "Add your description here"
+description = "A local knowledge assistant: save links, text and PDFs, then ask questions and get short cited answers or a refusal."
 readme = "README.md"
 authors = [
     { name = "Meo", email = "ameoangelo@gmail.com" }

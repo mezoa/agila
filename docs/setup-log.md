@@ -317,3 +317,10 @@ Command: `uv run python scripts/ollama_spike.py qwen3.5:4b` (then `qwen3.5:9b`).
 - Then `docker compose stop n8n`; `api` and `db` stayed healthy
 - `agila-digest` stays published; n8n is stopped at the end of the day. Block t (Workflow A) not started: the 4-hour rule was reached at about 14:15, so it moves to Day 14
 - Monday 2026-11-02 (Day 15, Gate 3): start n8n before 09:00 with `docker compose --profile n8n up -d n8n` to see the scheduled run; if n8n starts later that day, expect one catch-up run
+
+## Day 14 (2026-10-31), step 0 and block v part 1 (V1, V2: records and files; run by Claude)
+- Clean-clone check of the plain tests (no `.cache`, no `.env`, no `eval/library`), in a temporary folder outside the project: `git clone <project folder> clonetest`, `uv sync --locked`, `uv run ruff check .`, `uv run pytest` -> before step 0: 869 passed, 3 skipped, 2 failed, 2 errors (`test_evaluate.py` loaded the real model, research V181); after step 0: 871 passed, 3 skipped, 0 failed
+- Gotcha: a plain test passed on the laptop only because the model sits in the git-ignored `.cache/fastembed`; run the plain suite in a clean clone before trusting CI or the fresh-clone test
+- New secret for block t (DEVIATIONS 65): `AGILA_N8N_SAVE_KEY` in `.env` (Eo adds it at T-1; never printed)
+- Block v files (V2): `LICENSE` (MIT), `.github/workflows/ci.yml`, `README.md`, `tests/test_project_files.py`; `pyproject.toml` description. `uv lock --check` -> `Resolved 73 packages`, lock unchanged. Tests: `uv run ruff check .` -> All checks passed; `uv run pytest` -> 878 passed, 191 deselected; `uv run --env-file .env pytest -m db` -> 190 passed; clean clone -> 875 passed, 3 skipped
+- README commands not yet in this log (to be run in the fresh-clone test, V-4 to V-11): `ollama pull qwen3.5:4b`, `git clone https://github.com/mezoa/agila.git`, `Copy-Item .env.example .env`, `uv run python -c "import secrets; print(secrets.token_urlsafe(32))" | Set-Clipboard`
