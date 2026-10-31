@@ -85,7 +85,7 @@ uv run --env-file .env python -m agila.bot --sync   # once, and again when the c
 uv run --env-file .env python -m agila.bot          # in its own window; Ctrl+C stops it
 ```
 
-Only the user IDs in `DISCORD_ALLOWED_USER_IDS` get answers. Replies never ping anyone.
+Only the user IDs in `DISCORD_ALLOWED_USER_IDS` get answers. Replies never ping anyone. `SAVE_VIA_N8N=true` sends `/save` through n8n and needs `AGILA_N8N_SAVE_KEY` in `.env` (see `.env.example`); the default is `false`.
 
 ## Optional: n8n workflows
 
@@ -96,7 +96,7 @@ docker compose --profile n8n up -d n8n
 docker compose stop n8n
 ```
 
-The editor is at `http://127.0.0.1:5678`. The workflows (a weekly digest of stale documents posted to Discord, and a save pipeline for the bot) are not in this repository: exported n8n workflows and their screenshots are kept out of public places until n8n's licence terms for that are confirmed.
+The editor is at `http://127.0.0.1:5678`. Two workflows exist: a weekly digest of stale documents posted to Discord, and the save pipeline for the bot (`agila-save`), both described step by step in `docs/setup-log.md`. The exported workflows and their screenshots stay out of this repository until n8n's licence terms for that are confirmed.
 
 ## Privacy and safety
 

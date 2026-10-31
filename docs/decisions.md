@@ -161,3 +161,10 @@ Dev half only (10 questions: 7 answerable, 3 unanswerable), raw top 3 from `eval
 - **Fresh-clone test:** the real stack stopped, folder `agila-fresh`, new secrets, timed.
 - **Demo library:** the real library is checked read-only first; nothing is changed.
 - **Plan questions (VQ1 to VQ8):** the LICENSE holder is Eo's choice; no CI badge; the `pyproject.toml` description is fixed in block v.
+
+## Workflow A (block t, Eo, 2026-10-31; plan "Block t, u, v plan", setup-log "Day 14 (block t)")
+- **Route:** with `SAVE_VIA_N8N=true`, Discord `/save` goes from the bot to the n8n workflow `agila-save` (published as `v1 save pipeline`), which calls `POST /save/text` or `/save/url` with one retry.
+- **Replies:** the bot answers at once `Sent to the save pipeline; the result is posted by n8n in #agila-digest.`; n8n posts the API's own sentence, or `Could not save: <the API's sentence>`, or `Could not save: Agila's API did not answer. Nothing was saved.` in `#agila-digest`.
+- **No fallback:** if n8n does not answer, the bot says so in one sentence and saves nothing; it never falls back to the direct API call (DEVIATIONS 66).
+- **Protection:** Header Auth on the Webhook node with the fourth secret `AGILA_N8N_SAVE_KEY` (`.env` and the n8n credential `Agila n8n save key`); a call without it gets 403. The bot's n8n request carries only that key, never the API key (DEVIATIONS 65).
+- **Daily setting:** `SAVE_VIA_N8N=false` (the bot saves straight to the API); Eo sets it to `true` only while n8n is running.
