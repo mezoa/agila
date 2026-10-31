@@ -11,7 +11,7 @@ Install these first. They are not part of Docker Compose, and their downloads ar
 1. **Windows 10 or 11** with about 20 GB of RAM (the database, Ollama, the API and, optionally, n8n run side by side).
 2. **Docker Desktop** with the WSL 2 engine, running. Check: `docker --version` and `docker compose version`.
 3. **Ollama**, running on the host (not in Docker), with the model pulled:
-   `ollama pull qwen3.5:4b` (checked in the fresh-clone test)
+   `ollama pull qwen3.5:4b`
 4. **uv** (it installs Python 3.12 for the project by itself). Check: `uv --version`.
 5. **git**.
 
@@ -21,15 +21,15 @@ All commands below are for Windows PowerShell, run in the project folder.
 
 1. Get the code:
    ```powershell
-   git clone https://github.com/mezoa/agila.git   # (checked in the fresh-clone test)
+   git clone https://github.com/mezoa/agila.git
    cd agila
    uv sync
    ```
-2. Create `.env` from the example (checked in the fresh-clone test):
+2. Create `.env` from the example:
    ```powershell
    Copy-Item .env.example .env
    ```
-   Open `.env` in an editor. `POSTGRES_PASSWORD` and `AGILA_API_KEY` need long random values. This puts one on the clipboard without printing it (checked in the fresh-clone test); paste it into `.env`, run it again for the second value, then clear the clipboard:
+   Open `.env` in an editor. `POSTGRES_PASSWORD` and `AGILA_API_KEY` need long random values. This puts one on the clipboard without printing it; paste it into `.env`, run it again for the second value, then clear the clipboard:
    ```powershell
    uv run python -c "import secrets; print(secrets.token_urlsafe(32))" | Set-Clipboard
    Set-Clipboard -Value ' '
@@ -51,7 +51,7 @@ All commands below are for Windows PowerShell, run in the project folder.
    ```powershell
    uv run --env-file .env python -m agila.db migrate
    ```
-   It prints one `applied:` line per migration (`0001` to `0003`); a second run prints `nothing to apply`.
+   It prints one line listing every file it applied: `applied: 0001_init.sql, 0002_identity_index_web_only.sql, 0003_export.sql`. A second run prints `nothing to apply`.
 6. Check the API:
    ```powershell
    curl.exe -s http://127.0.0.1:8000/health
@@ -62,7 +62,7 @@ All commands below are for Windows PowerShell, run in the project folder.
    "The harbour lights are green on Tuesdays. This note is a first test. Nothing else is here." | uv run --env-file .env python -m agila.cli text --title "First test" --label first-test
    uv run --env-file .env python -m agila.cli ask "What colour are the harbour lights on Tuesdays?"
    ```
-   The save prints `Saved First test: 1 chunks`. The ask shows the matching passage first, then a short answer with a citation. The first question is slower while the model loads.
+   The save prints `Saved First test: 1 chunks`. The ask prints the short answer first, then a `Sources:` list with the cited passage. The first question is slower while the model loads.
 
 ## Everyday use
 
